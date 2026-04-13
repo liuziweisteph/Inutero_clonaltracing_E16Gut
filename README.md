@@ -132,8 +132,8 @@ Scripts should be run in the following order to reproduce the full analysis:
 ### Installation
 
 ```bash
-git clone <repository-url>
-cd <repository>
+git clone https://github.com/liuziweisteph/Inutero_clonaltracing_E16Gut.git
+cd Inutero_clonaltracing_E16Gut
 ```
 
 Open an R session in the project root and restore the exact package environment:
