@@ -1,0 +1,747 @@
+---
+title: "E1 Processing"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+library(Seurat)
+options(Seurat.object.assay.version = "v5")
+library(ggplot2)
+library(scales)
+library(sctransform)
+library(dplyr)
+library(patchwork)
+library(circlize)
+library(scCustomize)
+library(ComplexHeatmap)
+library(openxlsx)
+source("Helpers/helpers.R")
+```
+
+```{r}
+theme_set(
+  theme_classic(base_family = "Arial") +
+    theme(
+      plot.title = element_text(size = 10, face = "bold", hjust = 0.5),
+      legend.text = element_text(size = 8),
+      legend.title = element_text(size = 8),
+      axis.title = element_text(size = 8),
+      axis.text = element_text(size = 8)
+    )
+)
+```
+
+```{r}
+fig_dir <- "Figures/Fig2/"
+
+save_fig <- function(name, width = 12, height = 7, device = grDevices::pdf, bg = "white", dpi = 300) {
+  # Ensure the directory exists
+  if (!dir.exists(fig_dir)) dir.create(fig_dir, recursive = TRUE)
+
+  ggsave(
+    filename = file.path(fig_dir, name),
+    width = width,
+    height = height,
+    bg = bg,
+    dpi = dpi,
+    device = device
+  )
+}
+```
+
+```{r}
+save_heatmap <- function(p, name, width = 12, height = 7, file_type = "pdf") {
+  # Ensure the directory exists
+  if (!dir.exists(fig_dir)) {
+    dir.create(fig_dir, recursive = TRUE)
+  }
+
+  file_path <- file.path(fig_dir, name)
+
+  if (file_type == "pdf") {
+    pdf(file_path, width = width, height = height)
+    ComplexHeatmap::draw(p)
+    dev.off()
+  } else if (file_type == "png") {
+    png(file_path, width = width, height = height, units = "in", res = 300)
+    ComplexHeatmap::draw(p)
+    dev.off()
+  } else {
+    stop("file_type must be 'pdf' or 'png'")
+  }
+  message("Saved heatmap to: ", file_path)
+}
+```
+
+```{r}
+distinct8 <- c("#377EB8", "#E41A1F", "#84817b", "#A65628", "#FF7F00", "#FFD92F", "#984EA3", "#4DAF4A")
+distinct18 <- c("#96C3D8", "#12CBC4", "#9f9ac4", "#6ac6e9", "#4392c4", "#5758BB", "#9980FB", "#F5B375", "#A3CB38", "#d83890", "#B53471", "#E41A1C", "#84817b", "#A65628", "#FF7F00", "#FFD92F", "#984EA3", "#009432")
+distinct11 <- c("#377EB8", "#F5B375", "#A3CB38", "#C73681", "#E41A1C", "#84817b", "#A65628", "#FF7F00", "#FFD92F", "#984EA3", "#4DAF4A")
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+E16_seurat_E1 <- readRDS("Data/E16_barcodes_E1.rds") 
+DimPlot(E16_seurat_E1, reduction = "umap.harmony", group.by = "sample") + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig("umap_sample.pdf", width = 10, height = 7) # Fig 2C
+```
+
+```{r}
+# Create a pie graph
+E1_sample_counts <- table(E16_seurat_E1$sample)
+pdf(file.path(fig_dir, "pie_sampledistribution.pdf"), width = 8, height = 6)
+pie(E1_sample_counts,
+  main = "Sample Distribution of E16 Barcodes",
+  col = hue_pal()(length(E1_sample_counts)),
+  labels = paste(names(E1_sample_counts), " (", E1_sample_counts, ")", sep = "")
+)
+dev.off() # Fig 2C
+
+# Remove labels
+pdf(file.path(fig_dir, "pie_sampledistribution_nolabels.pdf"), width = 8, height = 6)
+pie(E1_sample_counts,
+  col = hue_pal()(length(E1_sample_counts)),
+  labels = NA
+)
+dev.off()
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+E16_seurat_E1$major_cell_type <- E16_seurat_E1$subcluster_combined
+E16_seurat_E1$major_cell_type <- dplyr::recode(E16_seurat_E1$major_cell_type,
+  "1_0" = "Fibroblast-like",
+  "1_1" = "Fibroblast-like",
+  "1_2" = "Fibroblast-like",
+  "1_3" = "Fibroblast-like", # stomach specific
+  "1_4" = "Fibroblast-like",
+  "1_5" = "Fibroblast-like", # stomach specific
+  "1_6" = "Fibroblast-like",
+  "1_7" = "Fibroblast-like", # Pericytes
+  "1_8" = "Fibroblast-like", # Interstitial Cells of Cajal
+  "2_0" = "Smooth muscle-like",
+  "2_1" = "Smooth muscle-like", # myofibroblast
+  "2_2" = "Smooth muscle-like",
+  "3" = "Foregut Basal", # stomach specific
+  "4" = "Endothelial",
+  "5" = "Simple Epithelial",
+  "6" = "ENS",
+  "7" = "Immune",
+  "8" = "Mesothelial"
+)
+E16_coarse_celltype_levels_E1 <- c("Fibroblast-like", "Smooth muscle-like", "Mesothelial", "Endothelial", "Simple Epithelial", "Foregut Basal", "ENS", "Immune")
+E16_seurat_E1$major_cell_type <- factor(x = E16_seurat_E1$major_cell_type, levels = E16_coarse_celltype_levels_E1)
+DimPlot(E16_seurat_E1, reduction = "umap.harmony", label = F, group.by = "major_cell_type", cols = distinct8) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig("umap_major_cell_types_E1.pdf") # Fig2D
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+E16_seurat_E1$assigned_cell_type <- E16_seurat_E1$subcluster_combined
+E16_seurat_E1$assigned_cell_type <- dplyr::recode(E16_seurat_E1$assigned_cell_type,
+  "1_0" = "Fibroblast 1 (Col6a4/Adamdec1)",
+  "1_1" = "Proliferative Fibroblast",
+  "1_2" = "Fibroblast 2 (Fndc1/Dpt)",
+  "1_3" = "Fibroblast 6 (Lepr/Sp5)",
+  "1_4" = "Fibroblast 3 (Adam12)",
+  "1_5" = "Fibroblast 5 (Mfap5/Grm3)",
+  "1_6" = "Fibroblast 4 (Kcnn3)",
+  "1_7" = "Pericyte",
+  "1_8" = "ICC", # Interstitial Cells of Cajal
+  "2_0" = "Smooth muscle",
+  "2_1" = "Myofibroblast",
+  "2_2" = "Proliferative Smooth muscle",
+  "3" = "Foregut Basal",
+  "4" = "Endothelial",
+  "5" = "Simple Epithelial",
+  "6" = "ENS",
+  "7" = "Immune",
+  "8" = "Mesothelial"
+)
+E16_subtype_levels_E1 <- c("Proliferative Fibroblast", "Fibroblast 1 (Col6a4/Adamdec1)", "Fibroblast 2 (Fndc1/Dpt)", "Fibroblast 3 (Adam12)", "Fibroblast 4 (Kcnn3)", "Fibroblast 5 (Mfap5/Grm3)", "Fibroblast 6 (Lepr/Sp5)", "Pericyte", "ICC", "Proliferative Smooth muscle", "Smooth muscle", "Myofibroblast", "Mesothelial", "Endothelial", "Simple Epithelial", "Foregut Basal", "ENS", "Immune")
+E16_seurat_E1$assigned_cell_type <- factor(x = E16_seurat_E1$assigned_cell_type, levels = E16_subtype_levels_E1)
+DimPlot(E16_seurat_E1, reduction = "umap.harmony", group.by = "assigned_cell_type", cols = distinct18) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig("umap_18subtypes_distinct18.pdf") #Fig 2I
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+# Combining similar subtypes
+E16_seurat_E1$major_cell_type_2 <- E16_seurat_E1$subcluster_combined
+E16_seurat_E1$major_cell_type_2 <- dplyr::recode(E16_seurat_E1$major_cell_type_2,
+  "1_0" = "Fibroblast",
+  "1_1" = "Fibroblast",
+  "1_2" = "Fibroblast",
+  "1_3" = "Fibroblast",
+  "1_4" = "Fibroblast",
+  "1_5" = "Fibroblast",
+  "1_6" = "Fibroblast",
+  "1_7" = "Pericyte",
+  "1_8" = "ICC", # Interstitial Cells of Cajal
+  "2_0" = "Smooth muscle",
+  "2_1" = "Myofibroblast",
+  "2_2" = "Smooth muscle",
+  "3" = "Foregut Basal",
+  "4" = "Endothelial",
+  "5" = "Simple Epithelial",
+  "6" = "ENS",
+  "7" = "Immune",
+  "8" = "Mesothelial"
+)
+E16_major_cell_type_levels <- c("Fibroblast", "Pericyte", "ICC", "Smooth muscle", "Myofibroblast", "Mesothelial", "Endothelial", "Simple Epithelial", "Foregut Basal", "ENS", "Immune")
+E16_seurat_E1$major_cell_type_2 <- factor(x = E16_seurat_E1$major_cell_type_2, levels = E16_major_cell_type_levels)
+DimPlot(E16_seurat_E1, reduction = "umap.harmony", group.by = "major_cell_type_2", cols = distinct11) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig("umap_major_cell_classes_grouped.pdf") # Fig3A
+```
+
+```{r}
+DimPlot(E16_seurat_E1, reduction = "umap.harmony", group.by = "seurat_clusters", cols = distinct8) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig("umap_unbiasedclustering_E1.pdf",width = 9, height = 7) # Supplementary
+```
+
+```{r}
+DimPlot(E16_seurat_E1, reduction = "umap.harmony", group.by = "subcluster_combined", cols = distinct18) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig("umap_unbiasedsubclustering_E1.pdf", width = 9, height = 7) # Supplementary
+```
+
+```{r}
+Idents(E16_seurat_E1) <- E16_seurat_E1$assigned_cell_type
+E16_seurat_E1 <- PrepSCTFindMarkers(E16_seurat_E1)
+markers_E1_subtypes <- FindAllMarkers(
+  E16_seurat_E1,
+  only.pos = TRUE, # only upregulated genes
+  min.pct = 0.50,
+  logfc.threshold = 1,
+  test.use = "wilcox"
+)
+
+markers_E1_subtypes_to_export <- markers_E1_subtypes %>%
+  filter(p_val_adj < 0.05 & avg_log2FC > 1) %>%
+  mutate(pct_diff = pct.1 - pct.2) %>%
+  select(cluster, gene, avg_log2FC, p_val_adj, everything()) %>%
+  arrange(cluster, desc(avg_log2FC))
+
+# Save
+write.xlsx(
+  markers_E1_subtypes_to_export,
+  file = file.path(fig_dir, "E16_E1_subtypes_markers.xlsx"),
+  rowNames = FALSE
+)
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+# Dot plot
+top5_E1_subtypes <- markers_E1_subtypes %>%
+  filter(p_val_adj < 0.05) %>%  
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC, n = 5)
+
+genes_use_subtypes <- unique(top5_E1_subtypes$gene)
+genes_use_subtypes <- genes_use_subtypes[
+  !grepl("^Gm", genes_use_subtypes) & 
+  !grepl("Rik$", genes_use_subtypes)
+]
+
+DotPlot(E16_seurat_E1, features = genes_use_subtypes) +
+  RotatedAxis() +
+  theme(
+    axis.text.x = element_text(size = 10),
+    axis.text.y = element_text(size = 10)
+  ) # Supplementary
+save_fig("dotplot_unbiased_E1.pdf",width = 18, height = 6) 
+```
+
+```{r}
+Idents(E16_seurat_E1) <- E16_seurat_E1$major_cell_type_2
+E16_seurat_E1 <- PrepSCTFindMarkers(E16_seurat_E1)
+markers_E1_major <- FindAllMarkers(
+  E16_seurat_E1,
+  only.pos = TRUE, # only upregulated genes
+  min.pct = 0.50,
+  logfc.threshold = 1,
+  test.use = "wilcox"
+)
+
+markers_E1_major_to_export <- markers_E1_major %>%
+  filter(p_val_adj < 0.05 & avg_log2FC > 1) %>%
+  mutate(pct_diff = pct.1 - pct.2) %>%
+  select(cluster, gene, avg_log2FC, p_val_adj, everything()) %>%
+  arrange(cluster, desc(avg_log2FC))
+
+# Save
+write.xlsx(
+  markers_E1_major_to_export,
+  file = file.path(fig_dir, "E16_E1_major_markers.xlsx"),
+  rowNames = FALSE
+)
+```
+
+```{r}
+Idents(E16_seurat_E1) <- E16_seurat_E1$major_cell_type
+E16_seurat_E1 <- PrepSCTFindMarkers(E16_seurat_E1)
+markers_E1_main <- FindAllMarkers(
+  E16_seurat_E1,
+  only.pos = TRUE, # only upregulated genes
+  min.pct = 0.50,
+  logfc.threshold = 1,
+  test.use = "wilcox"
+)
+
+markers_E1_main_to_export <- markers_E1_main %>%
+  filter(p_val_adj < 0.05 & avg_log2FC > 1) %>%
+  mutate(pct_diff = pct.1 - pct.2) %>%
+  select(cluster, gene, avg_log2FC, p_val_adj, everything()) %>%
+  arrange(cluster, desc(avg_log2FC))
+
+# Save
+write.xlsx(
+  markers_E1_main_to_export,
+  file = file.path(fig_dir, "E16_E1_8clusters_markers.xlsx"),
+  rowNames = FALSE
+)
+```
+
+```{r}
+E16_seurat_E1$major_cell_type_3 <- E16_seurat_E1$subcluster_combined
+E16_seurat_E1$major_cell_type_3 <- dplyr::recode(E16_seurat_E1$major_cell_type_3,
+  "1_0" = "Mesodermal",
+  "1_1" = "Mesodermal",
+  "1_2" = "Mesodermal",
+  "1_3" = "Mesodermal",
+  "1_4" = "Mesodermal",
+  "1_5" = "Mesodermal",
+  "1_6" = "Mesodermal",
+  "1_7" = "Mesodermal",
+  "1_8" = "Mesodermal",
+  "2_0" = "Mesodermal",
+  "2_1" = "Mesodermal",
+  "2_2" = "Mesodermal",
+  "3" = "Endodermal",
+  "4" = "Mesodermal",
+  "5" = "Endodermal",
+  "6" = "Neural Crest",
+  "7" = "Mesodermal",
+  "8" = "Mesodermal"
+)
+E16_germ_layer_levels <- c("Mesodermal", "Endodermal", "Neural Crest")
+E16_seurat_E1$major_cell_type_3 <- factor(x = E16_seurat_E1$major_cell_type_3, levels = E16_germ_layer_levels)
+DimPlot(E16_seurat_E1, reduction = "umap.harmony", group.by = "major_cell_type_3") + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig("umap_3germlayers.pdf")
+```
+
+```{r}
+# Exporting cellIDs for TREX analysis
+ids <- rownames(E16_seurat_E1@meta.data)
+head(ids)
+ids <- gsub("-1$", "", ids)
+head(ids)
+indexed_ids <- data.frame(
+  index = seq(0, length(ids) - 1),
+  cell_id = ids
+)
+
+write.table(
+  indexed_ids,
+  file = "Data/cellids_E1.tsv",
+  sep = "\t",
+  quote = FALSE,
+  row.names = FALSE,
+  col.names = FALSE
+)
+```
+
+```{r}
+E16_seurat_E1$Tomato <- GetAssayData(E16_seurat_E1, layer = "counts")["Tomato-N", ] > 0
+
+E16_seurat_E1$Tomato <- factor(
+  E16_seurat_E1$Tomato,
+  levels = c(FALSE, TRUE),
+  labels = c("Tomato−", "Tomato+")
+)
+table(E16_seurat_E1$Tomato) # 96.6%
+FeaturePlot(E16_seurat_E1, features= c("Tomato-N"), reduction = 'umap.harmony') + xlab("UMAP1") + ylab("UMAP2")
+save_fig("Supp/umap_Tomato-N_E1.pdf") # Supplementary
+```
+
+```{r}
+efficiency_summary <- E16_seurat_E1@meta.data %>%
+  filter(Tomato == "Tomato+") %>% 
+  summarise(
+    total_tomato = n(),
+    with_clone = sum(!is.na(clone_nr)),
+    pc_with_clone = (with_clone / total_tomato) * 100
+  )
+
+print(efficiency_summary)
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+# Cell-class-aggregated correlation plot: one dot per cell class, plotting mean viral reporter expression vs mean endogenous Eef1a1, with the Pearson r annotated.
+counts <- GetAssayData(E16_seurat_E1, layer = "counts")
+
+df_E1 <- data.frame(
+  cell = colnames(E16_seurat_E1),
+  class = E16_seurat_E1$major_cell_type,
+  TomatoN = as.numeric(counts["Tomato-N", ]),
+  Eef1a1 = as.numeric(counts["Eef1a1", ]),
+  nUMI = E16_seurat_E1$nUMI,
+  nGenes = E16_seurat_E1$nGene
+)
+
+class_means <- df_E1 %>%
+  group_by(class) %>%
+  summarise(
+    TomatoN = mean(TomatoN),
+    Eef1a1 = mean(Eef1a1),
+    nGenes = mean(nGenes),
+    nUMI = mean(nUMI),
+    n_cells = n(),
+    .groups = "drop"
+  )
+
+cor_EF1a <- cor.test(class_means$Eef1a1, class_means$TomatoN, method = "pearson")
+cor_nUMI <- cor.test(class_means$nUMI, class_means$TomatoN, method = "pearson")
+cor_nGenes <- cor.test(class_means$nGenes, class_means$TomatoN, method = "pearson")
+
+cor_EF1a$estimate # Very highly correlated; scaled by cellular transcriptional state, not technical noise
+cor_nUMI$estimate # Low correlation (r = 0.396)
+cor_nGenes$estimate # No correlation, suggesting that Tomato-N expression is almost entirely driven by Eef1a promoter activity, not by library size or sequencing depth
+
+# “Across cell classes, Tomato-N expression strongly correlated with endogenous Eef1a1 levels (Pearson’s r = 0.968), indicating that transgene expression driven by the synthetic EF1a promoter faithfully recapitulates endogenous EF1a transcriptional activity. In contrast, Tomato-N showed almost no correlation with the number of detected genes (r = −0.015), demonstrating that reporter levels are not driven by library complexity or sequencing depth.”
+```
+
+```{r,fig.height = 6, fig.width = 14, fig.align = "center"}
+# Combining the correlation plots
+p1 <- ggplot(class_means, aes(x = Eef1a1, y = TomatoN, label = class, color = class)) +
+  geom_point(size = 5) +
+  geom_text(vjust = -0.8, size = 4, show.legend = FALSE) +
+  guides(color = "none") +
+  scale_color_manual(values = distinct8) +
+  coord_cartesian(clip = "off") +
+  theme_classic() +
+  labs(
+    x = "Eef1a1 expression",
+    y = "Tomato-N expression",
+    title = paste0("r = ", round(cor_EF1a$estimate, 3))
+  )
+
+p2 <- ggplot(class_means, aes(x = nGenes, y = TomatoN, label = class, color = class)) +
+  geom_point(size = 5) +
+  geom_text(vjust = -0.8, size = 4, show.legend = FALSE) +
+  guides(color = "none") +
+  scale_color_manual(values = distinct8) +
+  coord_cartesian(clip = "off") +
+  theme_classic() +
+  labs(
+    x = "Number of genes expressed",
+    y = "Tomato-N expression",
+    title = paste0("r = ", round(cor_nGenes$estimate, 3))
+  )
+p1
+save_fig("Supp/corr1_E1.pdf", width = 10, height = 7)
+p2
+save_fig("Supp/corr1_E2.pdf", width = 12, height = 7)
+p1 + p2 # Supplementary
+```
+
+```{r}
+DimPlot(E16_seurat_E1, reduction = "umap.harmony", group.by = "Phase") + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig("Supp/umap_cellcycle_E1.pdf") # Supplementary
+```
+
+```{r,fig.height = 6, fig.width = 12, fig.align = "center"}
+Idents(E16_seurat_E1) <- E16_seurat_E1$major_cell_type
+markers.to.plot <- c("Vim", "Col1a1", "Lum", "Myh11", "Actg2", "Upk3b", "Msln", "Wt1", "Esm1", "Cd36", "Pecam1", "Cdh1", "Epcam", "Krt8", "Krt18", "Krt5", "Krt15", "Sox10", "Phox2b", "Ret", "Elavl4", "Cd52", "Ptprc")
+
+for (g in markers.to.plot) {
+  p <- FeaturePlot(
+    E16_seurat_E1,
+    features = g,
+    reduction = "umap.harmony"
+  ) + theme_void() + theme(legend.position = "right")
+
+  ggsave(
+    filename = file.path(fig_dir, paste0("Featureplots/", "FeaturePlot_", g, ".pdf")),
+    plot = p,
+    width = 4,
+    height = 4,
+    units = "in"
+  )
+} # Supplementary
+```
+
+```{r,fig.height = 6, fig.width = 13, fig.align = "center"}
+Fibroblast_type <- c("Vim", "Col1a1", "Lum")
+Smooth_muscle_type <- c("Myh11", "Actg2", "Acta2")
+Mesothelial_type <- c("Upk3b", "Msln", "Wt1")
+Endothelial_type <- c("Cd36", "Pecam1")
+Epithelial_type <- c("Cdh1", "Epcam", "Krt8", "Krt18")
+Basal_type <- c("Krt5", "Krt15")
+ENS_type <- c("Sox10", "Phox2b", "Ret", "Elavl4")
+Immune_type <- c("Ptprc", "Cd52")
+
+genes_all <- c(Fibroblast_type, Smooth_muscle_type, Mesothelial_type, Endothelial_type, Epithelial_type, Basal_type, ENS_type, Immune_type)
+
+expr <- GetAssayData(E16_seurat_E1, assay = "SCT", layer = "data")[genes_all, ]
+
+df <- data.frame(
+  cell = colnames(E16_seurat_E1),
+  class = E16_seurat_E1$major_cell_type,
+  t(expr)
+)
+
+mean_expr <- df %>%
+  group_by(class) %>%
+  summarise(across(all_of(genes_all), mean), .groups = "drop")
+mat <- as.matrix(mean_expr[, -1])
+rownames(mat) <- mean_expr$class
+mat_scaled <- t(scale(t(mat)))
+anno <- data.frame(
+  n_cells = as.numeric(table(E16_seurat_E1$major_cell_type)[rownames(mat)]),
+  Stomach_frac = tapply(
+    E16_seurat_E1$sample == "E16_stomach",
+    E16_seurat_E1$major_cell_type,
+    mean
+  )[rownames(mat)]
+)
+
+column_split <- factor(
+  c(
+    rep("Fibroblast", length(Fibroblast_type)),
+    rep("Smooth muscle", length(Smooth_muscle_type)),
+    rep("Mesothelial", length(Mesothelial_type)),
+    rep("Endothelial", length(Endothelial_type)),
+    rep("Epithelial", length(Epithelial_type)),
+    rep("Basal", length(Basal_type)),
+    rep("ENS", length(ENS_type)),
+    rep("Immune", length(Immune_type))
+  ),
+  levels = c(
+    "Fibroblast",
+    "Smooth muscle",
+    "Mesothelial",
+    "Endothelial",
+    "Epithelial",
+    "Basal",
+    "ENS",
+    "Immune"
+  )
+)
+```
+
+```{r}
+# Create a lookup vector to map each gene to its category
+gene_to_group <- c(
+  setNames(rep("Fibroblast", length(Fibroblast_type)), Fibroblast_type),
+  setNames(rep("Smooth muscle", length(Smooth_muscle_type)), Smooth_muscle_type),
+  setNames(rep("Mesothelial", length(Mesothelial_type)), Mesothelial_type),
+  setNames(rep("Endothelial", length(Endothelial_type)), Endothelial_type),
+  setNames(rep("Epithelial", length(Epithelial_type)), Epithelial_type),
+  setNames(rep("Basal", length(Basal_type)), Basal_type),
+  setNames(rep("ENS", length(ENS_type)), ENS_type),
+  setNames(rep("Immune", length(Immune_type)), Immune_type)
+)
+```
+
+```{r,fig.height = 3.5, fig.width = 10.5, fig.align = "center"}
+p <- DotPlot(
+  E16_seurat_E1,
+  features = genes_all,
+  group.by = "major_cell_type",
+  dot.scale = 8
+)
+
+# Flip top ↔ bottom
+p$data$id <- factor(p$data$id, levels = rev(levels(p$data$id)))
+
+p <- p +
+  facet_grid(
+    ~ factor(gene_to_group[genes_all], levels = levels(column_split)),
+    scales = "free_x",
+    space = "free_x"
+  ) +
+  theme(
+    panel.spacing = unit(0.2, "lines"),
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    strip.background = element_rect(fill = "white", color = "black"),
+    strip.text = element_text(face = "bold", size = 7),
+    axis.text.x = element_text(angle = 35, hjust = 1),
+    axis.title = element_blank()
+  )
+p
+save_fig("dotplots_majorcelltypes_E1.pdf", width = 10.5, height = 3.5) # Fig 2E
+```
+
+```{r}
+# Subsetting ENS group
+Idents(E16_seurat_E1) <- E16_seurat_E1$major_cell_type
+E16_seurat_E1_ENSsubset <- subset(E16_seurat_E1, idents = c("ENS"), invert = FALSE)
+DimPlot(E16_seurat_E1_ENSsubset, reduction = "umap.harmony", label = TRUE, group.by = "sample")
+```
+
+```{r}
+DefaultAssay(E16_seurat_E1_ENSsubset) <- "RNA"
+E16_seurat_E1_ENSsubset[["RNA"]]$scale.data.E16_stomach_barcodes <- NULL
+E16_seurat_E1_ENSsubset[["RNA"]]$scale.data.E16_ileum_barcodes <- NULL
+E16_seurat_E1_ENSsubset@assays$SCT <- NULL
+E16_seurat_E1_ENSsubset[["RNA"]]$data.E16_stomach_barcodes <- NULL
+E16_seurat_E1_ENSsubset[["RNA"]]$data.E16_ileum_barcodes <- NULL
+E16_seurat_E1_ENSsubset[["RNA"]] <- split(E16_seurat_E1_ENSsubset[["RNA"]], f = E16_seurat_E1_ENSsubset$sample)
+E16_seurat_E1_ENSsubset <- SCTransform(E16_seurat_E1_ENSsubset, vars.to.regress = "percent.mt", verbose = TRUE)
+VarGenes_E16_seurat_E1_ENSsubset <- VariableFeatures(object = E16_seurat_E1_ENSsubset)
+VarGenes_E16_seurat_E1_ENSsubset <- VarGenes_E16_seurat_E1_ENSsubset[!VarGenes_E16_seurat_E1_ENSsubset %in% c("Xist", "Gm13305", "Tsix", "Gm8730", "Eif2s3y", "Ddx3y", "Uty", "Kdm5d")]
+E16_seurat_E1_ENSsubset <- RunPCA(E16_seurat_E1_ENSsubset, verbose = FALSE, features = VarGenes_E16_seurat_E1_ENSsubset)
+E16_seurat_E1_ENSsubset <- RunUMAP(E16_seurat_E1_ENSsubset, reduction = "pca", dims = 1:50, n.neighbors = 55L, min.dist = 0.80, n.epochs = 1000, local.connectivity = 1L, seed.use = 111)
+E16_seurat_E1_ENSsubset <- FindNeighbors(E16_seurat_E1_ENSsubset, reduction = "pca", dims = 1:50)
+E16_seurat_E1_ENSsubset <- FindClusters(E16_seurat_E1_ENSsubset, verbose = FALSE, resolution = 1, algorithm = 4, random.seed = 111)
+DimPlot(E16_seurat_E1_ENSsubset, reduction = "umap", group.by = "sample")
+```
+
+```{r}
+E16_seurat_E1_ENSsubset@reductions$harmony <- NULL
+E16_seurat_E1_ENSsubset <- IntegrateLayers(
+  object = E16_seurat_E1_ENSsubset, method = HarmonyIntegration,
+  orig.reduction = "pca", new.reduction = "harmony",
+  assay = "SCT", verbose = FALSE
+)
+E16_seurat_E1_ENSsubset <- RunUMAP(E16_seurat_E1_ENSsubset, reduction = "harmony", dims = 1:50, reduction.name = "umap.harmony", n.neighbors = 50L, min.dist = 0.8, n.epochs = 1000, local.connectivity = 1L, seed.use = 11)
+DimPlot(E16_seurat_E1_ENSsubset, reduction = "umap.harmony", group.by = "sample")
+E16_seurat_E1_ENSsubset <- FindNeighbors(E16_seurat_E1_ENSsubset, reduction = "harmony", dims = 1:30)
+E16_seurat_E1_ENSsubset <- FindClusters(E16_seurat_E1_ENSsubset, resolution = 1.7, cluster.name = "harmony_clusters", algorithm = 4, random.seed = 111)
+DimPlot(E16_seurat_E1_ENSsubset, reduction = "umap.harmony", pt.size = 3) + theme_void() + theme(legend.position = "right")
+DimPlot(E16_seurat_E1_ENSsubset, reduction = "umap.harmony", pt.size = 3, group.by = "sample") + theme_void() + theme(legend.position = "right")
+save_fig("ENS/umap_samples_E1.pdf", width = 8, height = 6) # Supplementary
+```
+
+```{r}
+E16_seurat_E1_ENSsubset$ENS_subtypes <- E16_seurat_E1_ENSsubset$harmony_clusters
+E16_seurat_E1_ENSsubset$ENS_subtypes <- dplyr::recode(E16_seurat_E1_ENSsubset$ENS_subtypes,
+  "1" = "Enteric progenitor 1",
+  "2" = "Enteric progenitor 2",
+  "3" = "Enteric neuroblast",
+  "4" = "Enteric neuron"
+)
+E16_seurat_E1_ENSsubtype_levels <- c("Enteric progenitor 1", "Enteric progenitor 2", "Enteric neuroblast", "Enteric neuron")
+E16_seurat_E1_ENSsubset$ENS_subtypes <- factor(x = E16_seurat_E1_ENSsubset$ENS_subtypes, levels = E16_seurat_E1_ENSsubtype_levels)
+DimPlot(E16_seurat_E1_ENSsubset, reduction = "umap.harmony", group.by = "ENS_subtypes", pt.size = 6) + theme_void() + ggtitle(NULL)
+save_fig("ENS/umap_ENSsubclusters_E1.pdf", width = 8, height = 6) # Fig 2G
+```
+
+```{r}
+DimPlot(E16_seurat_E1_ENSsubset, reduction = "umap.harmony", pt.size = 6, group.by = "Phase") + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig("ENS/umap_cellcycle_E1.pdf", width = 8, height = 6) # Supplementary
+```
+
+```{r,fig.height = 8, fig.width = 8, fig.align = "center"}
+FeaturePlot(E16_seurat_E1_ENSsubset, features = c("Sox10", "Plp1", "Ascl1", "Elavl4", "Etv1", "Bnc2"), pt.size = 1.5, order = T, reduction = "umap.harmony")
+```
+
+```{r}
+ENS_genes <- c("Sox10", "Plp1", "Ascl1", "Elavl4", "Etv1", "Bnc2")
+
+for (g in ENS_genes) {
+  p <- FeaturePlot(
+    E16_seurat_E1_ENSsubset,
+    features = g,
+    reduction = "umap.harmony", pt.size = 3, order = T,
+  ) + theme_void() + theme(legend.position = "right")
+
+  ggsave(
+    filename = file.path(fig_dir, paste0("ENS/", "FeaturePlot_", g, ".pdf")),
+    plot = p,
+    width = 4,
+    height = 3,
+    units = "in"
+  )
+} # Fig2H
+```
+
+```{r,fig.height = 5, fig.width = 7, fig.align = "center"}
+E16_E1_subset2 <- subset(
+  E16_seurat_E1,
+  idents = "Simple Epithelial"
+)
+
+genes_2 <- c("Vil1", "Chga", "Tph1", "Fcgbp", "Clca1", "Lgr5")
+
+for (g in genes_2) {
+  p <- FeaturePlot(
+    E16_E1_subset2,
+    features = g,
+    reduction = "umap.harmony", pt.size = 4, order = T,
+  ) + theme_void() + theme(legend.position = "right")
+
+  ggsave(
+    filename = file.path(fig_dir, paste0("Featureplots/Simple_epithelial/", "FeaturePlot_", g, ".pdf")),
+    plot = p,
+    width = 4.5,
+    height = 2,
+    units = "in"
+  ) # Figure 2F
+}
+```
+
+```{r,fig.height = 6, fig.width = 14, fig.align = "center"}
+Idents(E16_seurat_E1) <- factor(E16_seurat_E1$assigned_cell_type, levels = E16_subtype_levels_E1)
+
+# Subset the Fibroblast-like and Smooth muscle-like groups
+keep_types <- c(
+  "Proliferative Fibroblast",
+  "Fibroblast 1 (Col6a4/Adamdec1)",
+  "Fibroblast 2 (Fndc1/Dpt)",
+  "Fibroblast 3 (Adam12)",
+  "Fibroblast 4 (Kcnn3)",
+  "Fibroblast 5 (Mfap5/Grm3)",
+  "Fibroblast 6 (Lepr/Sp5)",
+  "ICC",
+  "Pericyte",
+  "Proliferative Smooth muscle",
+  "Smooth muscle",
+  "Myofibroblast"
+)
+
+E16_E1_subset3 <- subset(
+  E16_seurat_E1,
+  idents = keep_types
+)
+
+DimPlot(E16_E1_subset3, reduction = "umap.harmony", group.by = "assigned_cell_type", pt.size = 1, cols = distinct18) + theme_void() + ggtitle(NULL)
+save_fig("umap_fibroblastlike_musclelike_subet_E1.pdf", width = 10, height = 6) # Fig 2I
+```
+
+```{r,fig.height = 3, fig.width = 10, fig.align = "center"}
+markers.to.plot_2 <- c("Tagln", "Trpc3", "Kit", "Ano1", "Rgs5", "Reln", "Pdgfrb", "Pdgfra", "Top2a", "Mki67", "Col6a4", "Adamdec1", "Fndc1", "Dpt", "Adam12", "Kcnn3", "Mfap5", "Grm3", "Lepr", "Sp5")
+
+q <- scCustomize::Clustered_DotPlot(E16_E1_subset3,
+  features = markers.to.plot_2, 
+  row_label_size = 6, column_label_size = 6,
+  cluster_feature = FALSE, cluster_ident = FALSE, plot_km_elbow = FALSE,
+  flip = TRUE, colors_use_idents = distinct18
+)
+
+save_heatmap(q, "heatmap_markers_fibroblastandsmoothmusclesubtype.pdf", width = 10, height = 3) # Figure 2J
+```
+
+```{r}
+markers.to.plot_3 <- c("Lama5", "Bmp5", "Bmp7", "Wnt5a", "Procr", "Foxl1", "Hgf", "F3", "Wt1", "Pi16", "Kcnn3", "Pdgfra")# Supplementary
+
+for (g in markers.to.plot_3) {
+  p <- FeaturePlot(
+    E16_E1_subset3,
+    features = g,
+    reduction = "umap.harmony"
+  ) + theme_void() + theme(legend.position = "right")
+
+  ggsave(
+    filename = file.path(fig_dir, paste0("Featureplots/", "FeaturePlot_", g, ".pdf")),
+    plot = p,
+    width = 6,
+    height = 4,
+    units = "in"
+  )
+}
+```
+
+```{r}
+# Save objects
+saveRDS(object = E16_seurat_E1, "Data/E16_barcodes_E1.rds")
+saveRDS(object = E16_seurat_E1_ENSsubset, "Data/E16_barcodes_E1_ENSsubset.rds")
+```

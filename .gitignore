@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# R session files
+.Rhistory
+.RData
+.Rproj.user/
+
+# renv installed packages (renv.lock is sufficient for reproducibility)
+renv/library/
+renv/staging/
+renv/sandbox/
+
+# Large TREX intermediates (regenerable via `trex run10x`; only clones.txt
+# and clone_details.txt are needed by downstream Rmd scripts)
+Clonal_analysis/TREX_output_*/umi_count_matrix.csv
+Clonal_analysis/TREX_output_*/reads.txt
+Clonal_analysis/TREX_output_*/entries.bam
+Clonal_analysis/TREX_output_*/molecules.txt
+Clonal_analysis/TREX_output_*/molecules_corrected.txt
+
+# Seurat / AnnData objects (available from GEO GSE325733)
+*.rds
+*.h5ad
+
+# Python
+__pycache__/
+.ipynb_checkpoints/
+
+# Editor / IDE
+.vscode/
+.Rproj.user/

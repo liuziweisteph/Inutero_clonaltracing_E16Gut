@@ -1,0 +1,391 @@
+---
+title: "E16_clonal_information"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+options(Seurat.object.assay.version = "v5")
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(patchwork)
+library(scales)
+library(circlize)
+library(UpSetR)
+library(scCustomize)
+library(ggalluvial)
+library(tibble)
+library(tidyr)
+library(ComplexHeatmap)
+library(grid)
+library(ggVennDiagram)
+library(org.Mm.eg.db)
+library(clusterProfiler)
+library(enrichplot)
+options(future.globals.maxSize = 100 * 1024^3)
+```
+
+```{r}
+fig_dir_regions <- "Figures/Fig5/"
+
+save_fig_regions <- function(name, width = 7, height = 5, device = grDevices::pdf, bg = "white", dpi = 300) {
+  # Ensure directory exists
+  if (!dir.exists(fig_dir_regions)) dir.create(fig_dir_regions, recursive = TRUE)
+
+  ggsave(
+    filename = file.path(fig_dir_regions, name),
+    width = width,
+    height = height,
+    bg = bg,
+    dpi = dpi,
+    device = device
+  )
+}
+```
+
+```{r}
+distinct11 <- c("#377EB8", "#F5B375", "#A3CB38", "#C73681", "#E41A1C", "#84817b", "#A65628", "#FF7F00", "#FFD92F", "#984EA3", "#4DAF4A")
+cell_types <- sort(unique(E16_barcodes$major_cell_type_2))
+color_map <- setNames(
+  rep(distinct11, length.out = length(cell_types)),
+  cell_types
+)
+```
+
+```{r}
+E16_barcodes <- readRDS("Data/E16_barcodes_E1.rds")
+E16_barcodes_E2 <- readRDS("Data/E16_barcodes_E2.rds")
+```
+
+```{r}
+E1 <- E16_barcodes
+DefaultAssay(E1) <- "RNA"
+E1[["RNA"]]$data.E16_stomach_barcodes <- NULL
+E1[["RNA"]]$data.E16_ileum_barcodes <- NULL
+E1[["RNA"]]$scale.data.E16_stomach_barcodes <- NULL
+E1[["RNA"]]$scale.data.E16_ileum_barcodes <- NULL
+E1@assays$SCT <- NULL
+E1[["RNA"]] <- split(E1[["RNA"]], f = E1$sample)
+
+E2 <- E16_barcodes_E2
+DefaultAssay(E2) <- "RNA"
+E2[["RNA"]]$data.E16_stomach_barcodes_E2 <- NULL
+E2[["RNA"]]$data.E16_jejileum_barcodes_E2 <- NULL
+E2[["RNA"]]$data.E16_colon_barcodes_E2 <- NULL
+E2[["RNA"]]$scale.data.E16_stomach_barcodes_E2 <- NULL
+E2[["RNA"]]$scale.data.E16_jejileum_barcodes_E2 <- NULL
+E2[["RNA"]]$scale.data.E16_colon_barcodes_E2 <- NULL
+E2@assays$SCT <- NULL
+E2[["RNA"]] <- split(E2[["RNA"]], f = E2$sample)
+
+E16 <- merge(E1, y = c(E2), add.cell.ids = c("E1", "E2"), project = "Barcodes")
+E16$CC.Difference <- E16$S.Score - E16$G2M.Score
+E16 <- SCTransform(E16, vars.to.regress = c("percent.mt","CC.Difference"), verbose = TRUE)
+VarGenes_E16 <- VariableFeatures(object = E16)
+VarGenes_E16 <- VarGenes_E16[!VarGenes_E16 %in% c("Xist", "Gm13305", "Tsix", "Gm8730", "Eif2s3y", "Ddx3y", "Uty", "Kdm5d")]
+E16 <- RunPCA(E16, verbose = FALSE, features = VarGenes_E16)
+E16 <- RunUMAP(E16, reduction = "pca", dims = 1:50, n.neighbors = 55L, min.dist = 0.80, n.epochs = 1000, local.connectivity = 1L, seed.use = 111)
+E16 <- FindNeighbors(E16, reduction = "pca", dims = 1:50)
+E16 <- FindClusters(E16, verbose = FALSE, resolution = 1, algorithm = 4, random.seed = 111)
+DimPlot(E16, reduction = "umap", group.by = "sample")
+```
+
+```{r}
+E16@reductions$harmony <- NULL
+E16 <- IntegrateLayers(
+  object = E16, method = HarmonyIntegration,
+  orig.reduction = "pca", new.reduction = "harmony",
+  assay = "SCT", verbose = FALSE
+)
+
+E16 <- RunUMAP(E16, reduction = "harmony", dims = 1:30, reduction.name = "umap.harmony", n.neighbors = 55L, min.dist = 1.2, n.epochs = 1000, local.connectivity = 1L, seed.use = 11)
+DimPlot(E16, reduction = "umap.harmony", group.by = "seq_folder")
+E16 <- FindNeighbors(E16, reduction = "harmony", dims = 1:30)
+E16 <- FindClusters(E16, resolution = 1.5, cluster.name = "harmony_clusters", algorithm = 4, random.seed = 111)
+E16_barcodes_levels_major2 <- c("Fibroblast", "Pericyte", "ICC", "Smooth muscle", "Myofibroblast", "Mesothelial", "Endothelial", "Simple Epithelial", "Foregut Basal", "ENS", "Immune")
+E16$major_cell_type_2 <- factor(x = E16$major_cell_type_2, levels = E16_barcodes_levels_major2)
+DimPlot(E16, reduction = "umap.harmony", group.by = "major_cell_type_2", cols = distinct11) + xlab("UMAP1") + ylab("UMAP2") 
+save_fig_regions("Merged_twodatasets.pdf", width = 8, height = 5) # Supplementary
+```
+```{r,fig.height = 6, fig.width = 18, fig.align = "center"}
+E16@meta.data <- E16@meta.data %>%
+  mutate(
+    region = case_when(
+      seq_folder == "E2_colon" ~ "l.intestine",
+      seq_folder %in% c("E1_ileum", "E2_jej_ileum") ~ "sm.intestine",
+      seq_folder %in% c("E1_stomach", "E2_stomach") ~ "stomach",
+      TRUE ~ NA_character_
+    )
+  )
+
+E16$region <- factor(E16$region,levels = c("stomach", "sm.intestine", "l.intestine"))
+DimPlot(E16, reduction = "umap.harmony", group.by = "major_cell_type_2", cols = distinct11,split.by = 'region') + xlab("UMAP1") + ylab("UMAP2") 
+save_fig_regions("Merged_splitbyregions.pdf", width = 18, height = 6) 
+```
+
+```{r}
+distinct3<- c("#00BFC4", "#F8766D","#F1C40F")
+DimPlot(E16, reduction = "umap.harmony", group.by = "region", cols = distinct3) + xlab("UMAP1") + ylab("UMAP2") 
+save_fig_regions("Merged_byregion.pdf", width = 8, height = 5) # Supplementary
+```
+
+```{r,fig.height = 5, fig.width = 9, fig.align = "center"}
+E16_fib <- subset(E16,subset = major_cell_type_2 == "Fibroblast")
+DimPlot(E16_fib, reduction = "umap.harmony", group.by = "assigned_cell_type", cols = distinct27) + xlab("UMAP1") + ylab("UMAP2")
+save_fig_regions("E16_fib_umap.pdf", width = 9, height = 5) 
+```
+
+```{r}
+DimPlot(E16_fib, reduction = "umap.harmony", group.by = "assigned_cell_type", split.by = 'region', cols = distinct27) + xlab("UMAP1") + ylab("UMAP2")
+save_fig_regions("E16_fibro_splitbyregions.pdf", width = 20, height = 5) 
+```
+
+```{r}
+E16_fib@meta.data <- E16_fib@meta.data %>%
+  mutate(seq_folder = recode(
+    seq_folder,
+    "E16_colon_barcodes_E2" = "E2_colon",
+    "E16_ileum_barcodes" = "E1_ileum",
+    "E16_jejileum_barcodes_E2" = "E2_jej_ileum",
+    "E16_stomach_barcodes" = "E1_stomach",
+    "E16_stomach_barcodes_E2" = "E2_stomach"
+  ))
+
+E16_fib$region <- recode(
+  E16_fib$seq_folder,
+  "E2_colon"   = "l.intestine",
+  "E2_jej_ileum"  = "sm.intestine",
+  "E1_ileum"  = "sm.intestine",
+  "E1_stomach" = "stomach",
+  "E2_stomach" = "stomach"
+)
+
+DimPlot(E16_fib, reduction = "umap.harmony", group.by = "assigned_cell_type", cols = distinct11, split.by = 'region')  + xlab("UMAP1") + ylab("UMAP2") 
+save_fig_regions("Merged_byregion_fibonly.pdf", width = 12, height = 5) 
+```
+
+```{r,fig.height = 5, fig.width = 20, fig.align = "center"}
+FeaturePlot(E16_fib, features = c('Thy1'), reduction='umap.harmony', split.by = 'region',order=T,keep.scale = "feature")+ xlab("UMAP1") + ylab("UMAP2") +theme(legend.position = "right")
+save_fig_regions("Merged_byregion_Thy1.pdf", width = 20, height = 5) 
+```
+
+```{r,fig.height = 5, fig.width = 20, fig.align = "center"}
+FeaturePlot(E16_fib, features = c('Tnfrsf19'), reduction='umap.harmony', split.by = 'region',order=T,keep.scale = "feature")+ xlab("UMAP1") + ylab("UMAP2") +theme(legend.position = "right")
+save_fig_regions("Merged_byregion_Tnfrsf19.pdf", width = 20, height = 5) 
+```
+
+```{r,fig.height = 5, fig.width = 20, fig.align = "center"}
+FeaturePlot(E16_fib, features = c('Grm3'), reduction='umap.harmony', split.by = 'region',order=T,keep.scale = "feature")+ xlab("UMAP1") + ylab("UMAP2") +theme(legend.position = "right")
+save_fig_regions("Merged_byregion_Grm3.pdf", width = 20, height = 5) 
+```
+```{r,fig.height = 5, fig.width = 20, fig.align = "center"}
+FeaturePlot(E16_fib, features = c('Sp5'), reduction='umap.harmony', split.by = 'region',order=T,keep.scale = "feature")+ xlab("UMAP1") + ylab("UMAP2") +theme(legend.position = "right")
+save_fig_regions("Merged_byregion_Sp5.pdf", width = 20, height = 5) 
+```
+
+```{r,fig.height = 5, fig.width = 20, fig.align = "center"}
+FeaturePlot(E16_fib, features = c('Wnt6'), reduction='umap.harmony', split.by = 'region',order=T,keep.scale = "feature")+ xlab("UMAP1") + ylab("UMAP2") +theme(legend.position = "right")
+save_fig_regions("Merged_byregion_Wnt6.pdf", width = 20, height = 5) 
+```
+
+```{r,fig.height = 5, fig.width = 20, fig.align = "center"}
+FeaturePlot(E16_fib, features = c('Cpne8'), reduction='umap.harmony', split.by = 'region',order=T,keep.scale = "feature")+ xlab("UMAP1") + ylab("UMAP2") +theme(legend.position = "right")
+save_fig_regions("Merged_byregion_Cpne8.pdf", width = 20, height = 5) 
+```
+
+```{r,fig.height = 5, fig.width = 20, fig.align = "center"}
+FeaturePlot(E16_fib, features = c('Ism1'), reduction='umap.harmony', split.by = 'region',order=T,keep.scale = "feature")+ xlab("UMAP1") + ylab("UMAP2") +theme(legend.position = "right")
+save_fig_regions("Merged_byregion_Ism1.pdf", width = 20, height = 5) 
+```
+
+```{r}
+E16@meta.data <- E16@meta.data %>%
+  mutate(seq_folder = recode(
+    seq_folder,
+    "E16_colon_barcodes_E2" = "E2_colon",
+    "E16_ileum_barcodes" = "E1_ileum",
+    "E16_jejileum_barcodes_E2" = "E2_jej_ileum",
+    "E16_stomach_barcodes" = "E1_stomach",
+    "E16_stomach_barcodes_E2" = "E2_stomach"
+  ))
+
+E16$seq_folder <- as.character(E16$seq_folder)
+E16$seq_folder <- factor(E16$seq_folder,levels = c("E1_stomach","E1_ileum","E2_stomach","E2_jej_ileum","E2_colon"))
+
+E16$region <- factor(as.character(E16$region), 
+                     levels = c("stomach", "sm.intestine", "l.intestine"))
+
+region_proportions_df <- E16@meta.data %>%
+  rownames_to_column("cellid") %>%
+  dplyr::select(cellid, region, major_cell_type_2) %>%
+  dplyr::count(region, major_cell_type_2, name = "Count") %>%
+  group_by(region) %>%
+  mutate(Proportion = Count / sum(Count)) %>%
+  ungroup()
+region_proportions_df$region <- factor(region_proportions_df$region, 
+                                       levels = c("stomach", "sm.intestine", "l.intestine"))
+cell_types <- unique(E16$major_cell_type_2)
+plot_colors <- distinct11[1:length(cell_types)]
+names(plot_colors) <- sort(cell_types)
+
+ggplot(region_proportions_df,
+       aes(x = region,
+           y = Proportion,
+           fill = major_cell_type_2)) +
+  geom_col() +
+  scale_y_continuous(limits = c(0.00, 1.00), breaks = seq(0.00, 1.00, by = 0.25), expand = c(0, 0)) +
+  theme_classic() +
+  scale_fill_manual(values = plot_colors) +
+  labs(x = "Sample",
+       y = "Cell type proportion",
+       fill = "Cell type") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+save_fig_regions("region_twodatasets_celltypeproportion.pdf", width = 6, height = 6) # Fig5G
+```
+
+```{r,fig.height = 6, fig.width = 12, fig.align = "center"}
+region_proportions_df_2<- E16_fib@meta.data %>%
+  rownames_to_column("cellid") %>%
+  dplyr::select(cellid, region, assigned_cell_type) %>%
+  dplyr::count(region, major_cell_type_2, name = "Count") %>%
+  group_by(region) %>%
+  mutate(Proportion = Count / sum(Count)) %>%
+  ungroup()
+
+region_proportions_df_2$region <- factor(region_proportions_df_2$region, 
+                                       levels = c("stomach", "sm.intestine", "l.intestine"))
+cell_types <- unique(E16$major_cell_type_2)
+plot_colors <- distinct11[1:length(cell_types)]
+names(plot_colors) <- sort(cell_types)
+
+ggplot(region_proportions_df_2,
+       aes(x = region,
+           y = Proportion,
+           fill = major_cell_type_2)) +
+  geom_col() +
+  scale_y_continuous(limits = c(0.00, 1.00), breaks = seq(0.00, 1.00, by = 0.25), expand = c(0, 0)) +
+  theme_classic() +
+  scale_fill_manual(values = plot_colors) +
+  labs(x = "Sample",
+       y = "Cell type proportion",
+       fill = "Cell type") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+save_fig_regions("region_twodatasets_celltypeproportion.pdf", width = 6, height = 6) # Supplementary
+```
+
+```{r,fig.height = 6, fig.width = 12, fig.align = "center"}
+region_proportions_df_3 <- E16_fib@meta.data %>%
+  rownames_to_column("cellid") %>%
+  dplyr::select(cellid, region, assigned_cell_type) %>%
+  dplyr::count(region, assigned_cell_type, name = "Count") %>%
+  group_by(region) %>%
+  mutate(Proportion = Count / sum(Count)) %>%
+  ungroup()
+
+ggplot(region_proportions_df_3,
+       aes(x = region,
+           y = Proportion,
+           fill = assigned_cell_type)) +
+  geom_col() +
+  scale_y_continuous(limits = c(0.00, 1.00), breaks = seq(0.00, 1.00, by = 0.25), expand = c(0, 0)) +
+  theme_classic() +
+  scale_fill_manual(values = distinct29) +
+  labs(x = "Region",
+       y = "Cell type proportion",
+       fill = "Cell type") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+save_fig_regions("region_fibro_twodatasets.pdf", width = 8, height = 6) 
+```
+
+```{r,fig.height = 3.5, fig.width = 10, fig.align = "center"}
+sub_meso <- subset(E16, subset = major_cell_type_3 == "Mesodermal")
+markers_meso <- FindAllMarkers(
+    sub_meso,
+    only.pos = TRUE,
+    min.pct = 0.25,
+    logfc.threshold = 0.25
+  )
+
+top10_meso <- markers_meso %>%
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC, n = 10) %>%
+  ungroup()
+
+top10_genes_meso <- unique(top10_meso$gene)
+
+DotPlot(
+  sub_meso,
+  features = top10_genes_meso,dot.scale = 8,
+  scale = F 
+) + RotatedAxis() + theme(
+  legend.position = "bottom")
+save_fig_regions("region_meso.pdf", width =10, height = 3.5) 
+```
+
+```{r,fig.height = 3.5, fig.width = 10, fig.align = "center"}
+sub_endodermal <- subset(E16, subset = major_cell_type_3 == "Endodermal")
+markers_endodermal <- FindAllMarkers(
+    sub_endodermal,
+    only.pos = TRUE,
+    min.pct = 0.25,
+    logfc.threshold = 0.25
+  )
+
+top10_endodermal <- markers_endodermal %>%
+  filter(p_val_adj < 0.05) %>%   
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC, n = 10) %>%
+  ungroup()
+
+top10_genes_endodermal <- unique(top10_endodermal$gene)
+top10_genes_endodermal <- top10_genes_endodermal[
+  !grepl("^Gm", top10_genes_endodermal)
+]
+
+DotPlot(
+  sub_endodermal,
+  features = top10_genes_endodermal,dot.scale = 8,
+  scale = F
+) + RotatedAxis()+ theme(
+  legend.position = "bottom")
+save_fig_regions("region_endo.pdf", width = 10, height = 3.5) 
+```
+
+```{r,fig.height = 3.5, fig.width = 10, fig.align = "center"}
+sub_nc <- subset(E16, subset = major_cell_type_3 == "Neural Crest")
+markers_nc <- FindAllMarkers(
+    sub_nc,
+    only.pos = TRUE,
+    min.pct = 0.25,
+    logfc.threshold = 0.25
+  )
+
+top10_nc <- markers_nc %>%
+  filter(p_val_adj < 0.05) %>%   
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC, n = 10) %>%
+  ungroup()
+
+top10_nc <- unique(top10_nc$gene)
+top10_nc <- top10_nc[
+  !grepl("^Gm", top10_nc)
+]
+
+DotPlot(
+  sub_nc,
+  features = top10_nc,dot.scale = 8,
+  scale = F, 
+) +RotatedAxis()+ theme(
+  legend.position = "bottom") 
+save_fig_regions("region_nc.pdf", width = 10, height = 3.5) 
+```
+
+```{r}
+saveRDS(object = E16, "Data/E16_barcodes_E1E2_merged.rds")
+```
+
+
+
+

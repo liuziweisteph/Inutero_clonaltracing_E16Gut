@@ -1,0 +1,135 @@
+Trex 0.4.dev402+g34d30aa
+Command line arguments: run10x --per-cell --jaccard-threshold 1.0 -s 717 -e 746 -m 7 /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/Embryo2/WithSoupX/merged/merged --filter-cloneids /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/trex_withdoubletfinder_idlistexcluded/medium_dataset_exclusion_list.csv -o /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/Embryo2/WithSoupX_final/E16_merged_10_output_2026 -f /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/Embryo2/WithSoupX_final/cellids_E2_withSoupX_202601_indexed.tsv --umi-matrix --plot
+Restricting analysis to 21749 allowed cells
+41743 CloneIDs will be ignored during the analysis
+Reading cloneIDs from chrTomato-N:717-746 in /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/Embryo2/WithSoupX/merged/merged/outs/possorted_genome_bam.bam
+Found 912917 reads with usable cloneIDs and UMIs. Skipped 345669 without cell id, 22558 without UMI.
+Read 891688 reads containing (parts of) the cloneID (461601 full cloneIDs, 5009 unique)
+Detected 274860 molecules (176616 full cloneIDs, 4027 unique)
+261136 remain after low-complexity filtering
+After cloneID correction, 1854 unique cloneIDs remain
+After filtering cloneIDs, 1649 unique cloneIDs remain
+Detected 18660 cells
+Found 2546 single-read cloneIDs
+16906 filtered cells remain
+Writing UMI matrix
+Removing 0 bridges from the graph
+Removing 0 doublets from the graph (first round)
+Removing 0 bridges from the graph (second round)
+Plotting clone graph
+Removing 0 doublets from the graph (second round)
+Plotting corrected clone graph
+Detected 3421 clones
+Clone size histogram
+ size count
+    1  2488
+    2   231
+    3   123
+    4    89
+    5    66
+    6    41
+    7    33
+    8    30
+    9    22
+   10    25
+   11    17
+   12    23
+   13    16
+   14    15
+   15    10
+   16    10
+   17    15
+   18     8
+   19    11
+   20     7
+   21    10
+   22     5
+   23     6
+   24     4
+   25     2
+   26     7
+   27     3
+   28     1
+   29     3
+   30     1
+   32     5
+   33     5
+   34     1
+   35     4
+   37     1
+   38     1
+   39     1
+   40     1
+   42     1
+   44     2
+   45     2
+   46     2
+   47     1
+   48     4
+   51     2
+   52     2
+   53     1
+   54     1
+   55     1
+   57     1
+   58     2
+   59     3
+   61     3
+   62     2
+   63     2
+   64     3
+   65     2
+   68     1
+   71     1
+   72     2
+   73     2
+   74     2
+   76     1
+   79     1
+   80     2
+   81     1
+   87     1
+   88     1
+   91     3
+   93     1
+   97     1
+  101     1
+  103     1
+  104     1
+  105     1
+  107     1
+  117     2
+  119     1
+  120     2
+  133     1
+  140     1
+  158     1
+  161     1
+  167     1
+  174     1
+  221     1
+  234     1
+  236     1
+  237     1
+  357     1
+  365     1
+  801     1
+Average clone size: 4.94
+Trex 0.4.dev402+g34d30aa
+Command line arguments: qc --plot-hamming-distance /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/Embryo2/WithSoupX_final/E16_merged_10_output_2026
+Reading reads ...
+Reading molecules ...
+Reading corrected molecules ...
+Reading cells ...
+Reading filtered cells ...
+Reading clones ...
+Plotting clone size histogram
+Plotting unique cloneID per clone histogram
+Plotting unique cloneID per cell histogram
+Plotting reads per molecule histogram
+Plotting read length per step histograms
+Plotting Hamming distance per step histograms
+Plotting molecules per cell per step histograms
+Plotting molecules per cloneID per step histograms
+Plotting unique cloneIDs per cell per step histograms
+Wrote '/cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/Embryo2/WithSoupX_final/E16_merged_10_output_2026/quality_report.pdf'

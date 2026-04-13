@@ -1,0 +1,640 @@
+---
+title: "Figure 5 — Regional and integrated clonal analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+library(dplyr)
+library(Seurat)
+options(Seurat.object.assay.version = "v5")
+library(ggplot2)
+library(stringr)
+library(patchwork)
+library(scales)
+library(circlize)
+library(UpSetR)
+library(scCustomize)
+library(ggalluvial)
+library(tibble)
+library(tidyr)
+library(ComplexHeatmap)
+options(future.globals.maxSize = 100 * 1024^3)
+```
+
+```{r}
+fig_dir_regions <- "Figures/Fig5/"
+
+save_fig_regions <- function(name, width = 7, height = 5, device = grDevices::pdf, bg = "white", dpi = 300) {
+  # Ensure directory exists
+  if (!dir.exists(fig_dir_regions)) dir.create(fig_dir_regions, recursive = TRUE)
+
+  ggsave(
+    filename = file.path(fig_dir_regions, name),
+    width = width,
+    height = height,
+    bg = bg,
+    dpi = dpi,
+    device = device
+  )
+}
+```
+
+```{r}
+# Annotated Seurat objects (cell types + clonal metadata; see Preprocessing and Clonal notebooks)
+E16_barcodes <- readRDS("Data/E16_barcodes_E1_20260320.rds")
+E16_barcodes_E2 <- readRDS("Data/E16_E2_Seurat_updated.rds")
+E16_E2_ENS <- readRDS("Data/E16_barcodes_ENS_E2.rds")
+```
+
+```{r}
+distinct11 <- c("#377EB8", "#F5B375", "#A3CB38", "#C73681", "#E41A1C", "#84817b", "#A65628", "#FF7F00", "#FFD92F", "#984EA3", "#4DAF4A")
+cell_types <- sort(unique(E16_barcodes$major_cell_type_2))
+color_map <- setNames(
+  rep(distinct11, length.out = length(cell_types)),
+  cell_types
+)
+
+clone_cols <- c(
+  "No CloneID" = "grey70",
+  "Singleton" = "grey70",
+  "Cross-germ clones" = "grey70",
+  "Region not shared at all" = "#56B4E9",
+  "Region shared by stomach, ileum" = "#ff7f00",
+
+  # E2-only categories
+  "Region shared by stomach, jej_ileum" = "#006D2C",
+  "Region shared by stomach, colon" = "#006D2C",
+  "Region shared by jej_ileum, colon" = "#006D2C",
+  "Region shared by stomach, jej_ile, colon" = "#D81B60"
+)
+```
+
+```{r}
+# Find regionally dispersed clones for E7.5 transduction
+clone_metadata <- E16_barcodes@meta.data %>%
+  filter(clones_per_cell_4 == "Multicellular") 
+
+regional_clone_summary <- clone_metadata %>%
+  dplyr::select(clone_nr, sample, clone_type, assigned_cell_type) %>%
+  group_by(clone_nr) %>%
+  summarise(
+    regions = list(unique(sample)),
+    n_regions = n_distinct(sample),
+    clone_types = list(unique(clone_type)),
+    cell_types = list(unique(assigned_cell_type)),
+    n_cells = n(),
+    .groups = "drop"
+  )
+
+# Identify clones found in multiple regions
+dispersed_clones <- regional_clone_summary %>%
+  filter(n_regions > 1) # 21 clones
+
+summary_row <- dispersed_clones %>%
+  summarise(
+    clone_nr = paste0("TOTAL(", length(clone_nr), " clones)"),
+    regions = list(unique(unlist(regions))),
+    n_regions = 2,
+    clone_types = list(unique(unlist(clone_types))),
+    cell_types = list(unique(unlist(cell_types))),
+    n_cells = sum(n_cells)
+  )
+
+dispersed_clones <- dispersed_clones %>%
+  mutate(clone_nr = as.character(clone_nr)) %>%
+  unique()
+
+dispersed_clones_with_total <- bind_rows(dispersed_clones, summary_row)
+
+dispersed_clones_df <- dispersed_clones_with_total %>%
+  mutate(across(where(is.list), ~ sapply(., toString)))
+write.csv(dispersed_clones_df, "Data/E1_regionaldispersed_clones.csv", row.names = FALSE)
+```
+
+```{r}
+# Prepare for the UpSet plot
+clone_counts <- as.data.frame(table(clone_metadata$clone_nr))
+colnames(clone_counts) <- c("clone_nr", "cell_count")
+
+shared_clone_metadata <- clone_metadata %>%
+  filter(clone_nr %in% dispersed_clones$clone_nr)
+
+clone_analysis <- shared_clone_metadata %>%
+  dplyr::select(clone_nr, major_cell_type_2)
+
+data_wide <- as.data.frame.matrix(table(clone_analysis$clone_nr, clone_analysis$major_cell_type_2))
+celltype <- colnames(data_wide)
+set_sizes <- colSums(data_wide)
+
+# Compute total number of cells per clone (sum across all cell types)
+clone_sizes <- rowSums(data_wide)
+
+# Convert to binary for UpSet intersections
+binary_matrix <- data_wide %>%
+  mutate(across(everything(), ~ ifelse(. > 0, 1, 0))) 
+binary_matrix$Clone_Size <- clone_sizes
+sets_vec <- colnames(binary_matrix)[-ncol(binary_matrix)]
+```
+
+```{r,fig.height = 6 , fig.width = 6, fig.align = "center"}
+grid::grid.newpage()
+upset(
+  binary_matrix[, -ncol(binary_matrix)],
+  sets = sets_vec,
+  order.by = "freq",
+  sets.x.label = "Total multicellular clones",
+  point.size = 5,
+  line.size = 2,
+  mb.ratio = c(0.6, 0.4),
+  text.scale = c(2.5, 2.0, 2.0, 1.8, 2.2, 2.2),
+  nintersects = 30,
+  mainbar.y.max = 16
+) # Fig 5A
+dev.off()
+```
+
+```{r}
+clone_region_map <- E16_barcodes@meta.data %>%
+  group_by(clone_nr) %>%
+  summarise(
+    regions = list(sort(unique(sample))),
+    clone_type = unique(clone_type)[1], 
+    .groups = "drop"
+  ) %>%
+  mutate(
+    shared_clone_category = case_when(
+      clone_type == "No CloneID" ~ "No CloneID",
+      clone_type == "Singleton" ~ "Singleton",
+      TRUE ~ map_chr(regions, function(r) {
+        if (length(r) == 1) {
+          "Region not shared at all"
+        } else if (setequal(r, c("E16_stomach", "E16_ileum"))) {
+          "Region shared by stomach, ileum"
+        } else {
+          paste("Other combination:", paste(r, collapse = ", "))
+        }
+      })
+    )
+  )
+
+E16_barcodes@meta.data$shared_clone_category <-
+  clone_region_map$shared_clone_category[
+    match(E16_barcodes@meta.data$clone_nr, clone_region_map$clone_nr)
+  ]
+
+E16_barcodes@meta.data$shared_clone_category <- factor(
+  E16_barcodes@meta.data$shared_clone_category,
+  levels = c(
+    "No CloneID",
+    "Singleton",
+    "Region not shared at all",
+    "Region shared by stomach, ileum"
+  )
+)
+
+E16_barcodes@meta.data$shared_clone_category <- factor(
+  E16_barcodes@meta.data$shared_clone_category,
+  levels = names(clone_cols)
+)
+
+DimPlot(E16_barcodes, group.by = "shared_clone_category", reduction = "umap.harmony", pt.size = 0.5, order = T, cols = clone_cols) + ggtitle("Clones shared between regions")
+save_fig_regions("umap_E1_regional_sharedclones.pdf", width = 9, height = 6) # Fig 5B
+```
+
+```{r,fig.height = 6, fig.width = 8, fig.align = "center"}
+clone_numbers_dispersed <- dispersed_clones$clone_nr %>% unique()
+df <- E16_barcodes@meta.data %>%
+  filter(clone_nr %in% clone_numbers_dispersed) %>%
+  select(sample, major_cell_type_2, clone_nr) %>%
+  mutate(
+    sample = factor(sample, levels = c("E16_stomach", "E16_ileum")),
+    major_cell_type = as.factor(major_cell_type_2)
+  )
+
+ggplot(
+  df,
+  aes(
+    axis1 = sample,
+    axis2 = major_cell_type,
+    axis3 = clone_nr,
+    y = 1, 
+    fill = major_cell_type
+  )
+) +
+  geom_alluvium(aes(fill = major_cell_type), width = 0.1, alpha = 0.8) +
+  geom_stratum(width = 0.1, fill = "grey90", color = "black") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 5) +
+  scale_x_discrete(limits = c("Sample", "Cell type","Clone ID"), expand = c(0.1, 0.1)) +
+  scale_fill_manual(values = color_map) +
+  theme_void() +
+  theme(legend.position = "none") # Fig 5C
+save_fig_regions("alluvialdiagram_E1_regional.pdf", width = 8, height = 6) 
+```
+
+```{r}
+# Find regionally dispersed clones for early E7.5 transduction ( restricted to single-germ-layer clones)
+cross_germ_clone_ids <- E16_barcodes_E2@meta.data %>%
+  filter(clones_per_cell_4 == "Multicellular") %>%
+  group_by(clone_nr) %>%
+  summarise(
+    n_types = n_distinct(major_cell_type_3),
+    .groups = "drop"
+  ) %>%
+  filter(n_types > 1) %>%
+  pull(clone_nr)
+cross_germ_clone_ids 
+```
+
+```{r,fig.height = 6, fig.width = 8, fig.align = "center"}
+clone_region_map_E2 <- E16_barcodes_E2@meta.data %>%
+  group_by(clone_nr) %>%
+  summarise(
+    regions = list(sort(unique(sample))),
+    clone_type = dplyr::first(as.character(clone_type)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    shared_clone_category = case_when(
+      clone_type == "No CloneID" ~ "No CloneID",
+      clone_type == "Singleton" ~ "Singleton",
+      TRUE ~ map_chr(regions, function(r) {
+        if (length(r) == 1) {
+          "Region not shared at all"
+        } else if (all(c("E16_stomach", "E16_jej_ileum") %in% r) && length(r) == 2) {
+          "Region shared by stomach, jej_ileum"
+        } else if (all(c("E16_stomach", "E16_colon") %in% r) && length(r) == 2) {
+          "Region shared by stomach, colon"
+        } else if (all(c("E16_jej_ileum", "E16_colon") %in% r) && length(r) == 2) {
+          "Region shared by jej_ileum, colon"
+        } else if (all(c("E16_stomach", "E16_jej_ileum", "E16_colon") %in% r) && length(r) == 3) {
+          "Region shared by stomach, jej_ile, colon"
+        } else {
+          stop(paste("Unexpected region combination:", paste(r, collapse = ", ")))
+        }
+      })
+    ),
+    shared_clone_category = if_else(
+      clone_nr %in% cross_germ_clone_ids,
+      "Cross-germ clones",
+      shared_clone_category
+    )
+  )
+
+E16_barcodes_E2@meta.data$shared_clone_category <-
+  clone_region_map_E2$shared_clone_category[
+    match(E16_barcodes_E2@meta.data$clone_nr, clone_region_map_E2$clone_nr)
+  ]
+
+E16_barcodes_E2@meta.data$shared_clone_category <- factor(
+  E16_barcodes_E2@meta.data$shared_clone_category,
+  levels = c(
+    "No CloneID",
+    "Singleton",
+    "Cross-germ clones",
+    "Region not shared at all",
+    "Region shared by stomach, jej_ileum",
+    "Region shared by stomach, colon",
+    "Region shared by jej_ileum, colon",
+    "Region shared by stomach, jej_ile, colon"
+  )
+)
+
+E16_barcodes_E2@meta.data$shared_clone_category <- factor(
+  E16_barcodes_E2@meta.data$shared_clone_category,
+  levels = names(clone_cols)
+)
+DimPlot(E16_barcodes_E2, group.by = "shared_clone_category", reduction = "umap.harmony", pt.size = 0.5, order = T, cols = clone_cols)  + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig_regions("umap_E2_regional_sharedclones.pdf", width = 9, height = 6) # Fig 5E
+```
+
+```{r}
+# Prepare for the UpSet plot for E2 (non-epiblast clones only)
+distinct_clones_E2 <- clone_metadata_E2%>%
+  group_by(clone_nr) %>%
+  filter(n_distinct(major_cell_type_3) == 1) %>%
+  ungroup() %>%
+  distinct(clone_nr) %>%
+  pull(clone_nr)# 851 CloneIDs
+
+
+shared_clone_metadata_E2 <- clone_metadata_E2 %>%
+  filter(clone_nr %in% distinct_clones_E2)
+
+regional_clone_summary_E2 <- shared_clone_metadata_E2 %>%
+  dplyr::select(clone_nr, sample, clone_type, assigned_cell_type) %>%
+  group_by(clone_nr) %>%
+  summarise(
+    regions = list(unique(sample)), 
+    n_regions = n_distinct(sample),
+    clone_types = list(unique(clone_type)),
+    cell_types = list(unique(assigned_cell_type)), 
+    n_cells = n(), 
+    .groups = "drop"
+  )
+
+# Identify clones found in multiple regions
+dispersed_clones_E2 <- regional_clone_summary_E2 %>%
+  filter(n_regions > 1) #  119 clones
+
+summary_row_E2 <- dispersed_clones_E2 %>%
+  summarise(
+    clone_nr = paste0("TOTAL(", length(clone_nr), " clones)"),
+    regions = list(unique(unlist(regions))),
+    n_regions = 3,
+    clone_types = list(unique(unlist(clone_types))),
+    cell_types = list(unique(unlist(cell_types))),
+    n_cells = sum(n_cells)
+  )
+
+dispersed_clones_E2 <- dispersed_clones_E2 %>%
+  mutate(clone_nr = as.character(clone_nr)) %>%
+  unique()
+
+dispersed_clones_with_total_E2 <- bind_rows(dispersed_clones_E2, summary_row_E2)
+
+dispersed_clones_df_E2 <- dispersed_clones_with_total_E2 %>%
+  mutate(across(where(is.list), ~ sapply(., toString)))
+write.csv(dispersed_clones_df_E2, "Data/E2_regionaldispersed_clones_nonepiblast.csv", row.names = FALSE)
+```
+
+```{r}
+# Prepare for the UpSet plot for E2 (non-epiblast)
+clone_analysis_E2 <- shared_clone_metadata_E2 %>%
+  dplyr::select(clone_nr, major_cell_type_2)
+
+data_wide_E2 <- as.data.frame.matrix(table(clone_analysis_E2$clone_nr, clone_analysis_E2$major_cell_type_2))
+celltype_E2 <- colnames(data_wide_E2)
+set_sizes_E2 <- colSums(data_wide_E2)
+
+# Compute total number of cells per clone (sum across all cell types)
+clone_sizes_E2 <- rowSums(data_wide_E2)
+
+# Convert to binary for UpSet intersections
+binary_matrix_E2 <- data_wide_E2 %>%
+  mutate(across(everything(), ~ ifelse(. > 0, 1, 0))) 
+binary_matrix_E2$Clone_Size <- clone_sizes_E2
+sets_vec_E2 <- colnames(binary_matrix_E2)[-ncol(binary_matrix_E2)]
+```
+
+```{r,fig.height = 5, fig.width = 6, fig.align = "center"}
+pdf(file.path(fig_dir_regions, "Uplot_E2_regional_nonepiblast.pdf"), width = 6, height = 5, onefile = FALSE)
+grid::grid.newpage()
+upset(
+  binary_matrix_E2[, -ncol(binary_matrix_E2)],
+  sets = sets_vec_E2,
+  order.by = "freq",
+  sets.x.label = "Total multicellular clones",
+  point.size = 5,
+  line.size = 2,
+  mb.ratio = c(0.6, 0.4),
+  text.scale = c(2.5, 2.0, 2.0, 1.8, 2.2, 2.2),
+  nintersects = 30,
+  mainbar.y.max = 120
+) # Fig 5D
+dev.off()
+```
+
+```{r}
+heatmap_matrix <- shared_clone_metadata_E2 %>%
+  distinct(clone_nr, sample) %>%
+  mutate(val = 1) %>%
+  pivot_wider(names_from = sample, values_from = val, values_fill = 0) %>%
+  column_to_rownames("clone_nr") %>%
+  as.matrix()
+
+# Prepare the Row Annotation (Cell Type)
+row_data <- shared_clone_metadata_E2 %>%
+  distinct(clone_nr, major_cell_type_2) %>%
+  group_by(clone_nr) %>%
+  summarise(type = paste(unique(major_cell_type_2), collapse = "/")) %>%
+  column_to_rownames("clone_nr")
+
+row_data <- row_data[rownames(heatmap_matrix), , drop = FALSE]
+
+celltype_cols <- c(
+  "Endothelial" = "#A65628",
+  "ENS" = "#984EA3",
+  "Immune" = "#4DAF4A",
+  "ICC/Fibroblast" = "yellow",
+  "Endothelial/Fibroblast" = "#377EB8",
+  "Immune/Fibroblast" = "red"
+)
+
+ra = rowAnnotation(
+  CellType = row_data$type,
+  col = list(CellType = celltype_cols)
+)
+
+#  Draw the Heatmap 
+pdf(file.path(fig_dir_regions, "E2_nonepiblast_clones_3regions.pdf"), width = 6, height = 5, onefile = FALSE)
+Heatmap(heatmap_matrix, 
+        name = "Presence",
+        col = c("white", "navy"),
+        right_annotation = ra,        
+        show_row_names = FALSE, 
+        cluster_columns = FALSE, 
+        row_title = "Clones",
+        column_title = "Regional Distribution & Cell Identity", 
+        border = TRUE)
+dev.off() # Fig 5F
+```
+
+```{r,fig.height = 6, fig.width = 6, fig.align = "center"}
+clone_sharing_logic <- E16_E2_ENS@meta.data %>%
+  filter(clones_per_cell_4 == "Multicellular") %>%        
+  group_by(clone_nr) %>%
+  filter(n_distinct(major_cell_type_3) == 1) %>%
+  distinct(clone_nr, sample) %>%
+  group_by(clone_nr) %>%
+  summarise(intersection_type = paste(sort(sample), collapse = " & "), .groups = "drop")
+
+sharing_map <- setNames(clone_sharing_logic$intersection_type, clone_sharing_logic$clone_nr)
+cells_meta <- E16_E2_ENS@meta.data
+cell_upset_values <- sharing_map[as.character(cells_meta$clone_nr)]
+names(cell_upset_values) <- colnames(E16_E2_ENS)
+E16_E2_ENS$upset_group <- cell_upset_values
+
+E16_E2_ENS$migration_type <- case_when(
+  grepl("stomach", E16_E2_ENS$upset_group) & grepl("colon", E16_E2_ENS$upset_group) ~ "Stomach-Colon Migrant",
+  grepl("&", E16_E2_ENS$upset_group) ~ "Other Shared Clone",
+  TRUE ~ "Local Clone"
+)
+
+DimPlot(E16_E2_ENS, 
+        group.by = "migration_type", 
+        cols = c("Stomach-Colon Migrant" = "#E31A1C", 
+                 "Other Shared Clone" = "#1F78B4",    
+                 "Local Clone" = "#A6CEE3",           
+                 "Unlabeled" = "grey90"),
+        order = T, 
+        reduction = "umap.harmony") +
+  labs(title = "ENS: Evidence of Long-Distance Migration",
+       subtitle = "Red cells share a Clone ID between Stomach and Colon") #Fig 5H
+save_fig_regions("ENS_longdistancemigration_nonepiblast.pdf",width = 6, height = 6)
+```
+
+```{r,fig.height = 6, fig.width = 7, fig.align = "center"}
+E16_colon_barcodes_E2 <- subset(E16_E2_ENS, subset = epiblast_label == "non-epiblast" & sample == "E16_colon")
+VlnPlot(E2_colon_subset,
+        features = c("Pou3f3","Pantr1"), 
+        group.by = "migration_type", 
+        pt.size = 0.5, # Shows individual cell jitter
+        cols = c("Stomach-Colon Migrant" = "#E31A1C", 
+                 "Other Shared Clone" = "#1F78B4", 
+                 "Local Clone" = "#A6CEE3", 
+                 "Unlabeled" = "grey90")) +
+  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
+  labs(title = "Pou3f3 Expression in Colonic ENS by Clonal Origin",
+       subtitle = "Stomach-derived migrants acquire colonic markers") +
+  theme(legend.position = "none") # Fig 5I
+save_fig_regions("ENS_Vlnplot_nonepiblast.pdf",width = 7, height = 6) 
+```
+
+```{r}
+# 1. Prepare metadata with relabeled ENS subtypes
+ens_meta_shared <- E16_E2_ENS@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  mutate(
+    refined_type = case_when(
+      grepl("Progenitor", assigned_cell_type, ignore.case = TRUE) ~ "ENS Progenitors",
+      grepl("Branch B", assigned_cell_type, ignore.case = TRUE) ~ "ENS Branch B",
+      assigned_cell_type %in% c("ENS Branch A", "ENC12") ~ "ENS Branch A",
+      TRUE ~ assigned_cell_type
+    )
+  ) %>%
+  group_by(clone_nr) %>%
+  #filter(n_distinct(refined_type) > 1, n_distinct(sample) > 1) %>% # filtering the more than 1 sample more than 1 cell type
+  ungroup()
+
+# 2. Clone annotation data
+ens_shared_metadata <- ens_meta_shared %>%
+  group_by(clone_nr) %>%
+  summarise(
+    samples = paste(
+      unique(sample[order(match(sample, c("E16_stomach", "E16_jej_ileum", "E16_colon")))]),
+      collapse = " / "
+    ),
+    .groups = "drop"
+  )
+
+# 3. Build clone x subtype proportion matrix
+heatmap_matrix_ens <- ens_meta_shared %>%
+  group_by(clone_nr, refined_type) %>%
+  tally(name = "cell_count") %>%
+  group_by(clone_nr) %>%
+  mutate(prop = cell_count / sum(cell_count)) %>%
+  ungroup() %>%
+  select(clone_nr, refined_type, prop) %>%
+  pivot_wider(
+    id_cols = clone_nr,
+    names_from = refined_type,
+    values_from = prop,
+    values_fill = 0
+  ) %>%
+  column_to_rownames("clone_nr") %>%
+  as.matrix()
+
+# 4. Align row annotation
+row_data_ens <- ens_shared_metadata %>%
+  filter(clone_nr %in% rownames(heatmap_matrix_ens)) %>%
+  column_to_rownames("clone_nr")
+
+row_data_ens <- row_data_ens[rownames(heatmap_matrix_ens), , drop = FALSE]
+
+# 5. Region annotation colors
+all_unique_combos <- unique(row_data_ens$samples)
+ens_colors <- setNames(scales::hue_pal()(length(all_unique_combos)), all_unique_combos)
+
+ra_ens <- rowAnnotation(
+  region = row_data_ens$samples,
+  col = list(region = ens_colors),
+  show_annotation_name = TRUE,
+  annotation_legend_param = list(
+    region = list(
+      title = "Regions",
+      title_gp = gpar(fontsize = 10, fontface = "bold")
+    )
+  )
+)
+
+# 6. Order subtype columns
+subtype_order <- c(
+  "ENS Progenitors",
+  "ENS Neuroblast",
+  "ENS Branch A",
+  "ENS Branch B",
+  "SCP"
+)
+
+existing_cols <- intersect(subtype_order, colnames(heatmap_matrix_ens))
+heatmap_matrix_ens <- heatmap_matrix_ens[, existing_cols, drop = FALSE]
+
+# 7. Order region groups
+region_order <- c(
+  "E16_stomach / E16_jej_ileum / E16_colon",
+  "E16_stomach / E16_colon",
+  "E16_stomach / E16_jej_ileum",
+  "E16_jej_ileum / E16_colon",
+  "E16_stomach",
+  "E16_jej_ileum",
+  "E16_colon"
+)
+
+region_colors <- c(
+  "E16_stomach / E16_jej_ileum / E16_colon" = "#E41A1C",  
+  "E16_stomach / E16_colon" = "#FF69B4",      
+  "E16_stomach / E16_jej_ileum" = "#FF7F00",              
+  "E16_jej_ileum / E16_colon" = "#41AB5D",
+  "E16_stomach" = "#8C6D31",
+  "E16_jej_ileum" ="#FDBF6F",
+  "E16_colon" = "#CAB2D6"
+)
+
+row_data_ens$samples <- factor(row_data_ens$samples, levels = region_order)
+
+# reorder rows to match split order
+ord <- order(row_data_ens$samples)
+heatmap_matrix_ens <- heatmap_matrix_ens[ord, , drop = FALSE]
+row_data_ens <- row_data_ens[ord, , drop = FALSE]
+
+# rebuild annotation AFTER ordering rows
+ra_ens <- rowAnnotation(
+  region = row_data_ens$samples,
+  col = list(region = region_colors),
+  show_annotation_name = TRUE,
+  annotation_legend_param = list(
+    region = list(
+      title = "Regions",
+      title_gp = gpar(fontsize = 10, fontface = "bold")
+    )
+  )
+)
+
+pdf(file.path(fig_dir_regions, "ENS_E2_subtype_sharing_heatmap_subtype_allclones.pdf"), width = 6, height = 9)
+Heatmap(
+  heatmap_matrix_ens,
+  name = "Proportion",
+  col = col_fun,
+  right_annotation = ra_ens,
+  cluster_columns = FALSE,
+  cluster_rows = TRUE,
+  cluster_row_slices = FALSE,
+  row_split = row_data_ens$samples,
+  row_gap = unit(1.5, "mm"),
+  show_row_names = FALSE,
+  border = TRUE,
+  column_names_side = "top",
+  column_title = "Long-Distance ENS Migrants: Regional & Subtype Composition",
+  row_title = "Shared CloneIDs"
+) #Fig 5G
+dev.off()
+```
+
+```{r}
+saveRDS(object = E16_barcodes, "Data/E16_barcodes_E1.rds")
+saveRDS(object = E16_barcodes_E2, "Data/E16_barcodes_E2.rds")
+```
+
+

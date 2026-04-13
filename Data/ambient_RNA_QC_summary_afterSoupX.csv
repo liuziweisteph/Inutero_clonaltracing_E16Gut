@@ -1,0 +1,4 @@
+"Dataset","N_droplets","N_cells","Mean_background_UMI","Mean_marker_background","Mean_contamination_fraction","Median_contamination_fraction"
+"E16_colon_SoupX_corrected",1787722,5922,3.47806688131238e-05,0.000176143681532224,0.013,0.013
+"E16_jejile_SoupX_corrected",2381775,12079,5.1514001846975e-05,0.000818832690954105,0.01,0.01
+"E16_stomach_SoupX_corrected",2060491,13834,3.9264805419627e-05,0.000584241597496393,0.01,0.01

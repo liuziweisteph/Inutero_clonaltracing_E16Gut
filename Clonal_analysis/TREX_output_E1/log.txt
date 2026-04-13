@@ -1,0 +1,69 @@
+Trex 0.4.dev402+g34d30aa
+Command line arguments: run10x --per-cell --jaccard-threshold 1.0 -s 717 -e 746 -m 7 /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/merged_data --filter-cloneids /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/trex_withdoubletfinder_idlistexcluded/medium_dataset_exclusion_list.csv -o /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/Embryo1_final/E16_merged_E1_10_output_medium_5356cells -f /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/merged_data/cellids_E1_withSoupX_final.tsv --umi-matrix --plot
+Restricting analysis to 5356 allowed cells
+41743 CloneIDs will be ignored during the analysis
+Reading cloneIDs from chrTomato-N:717-746 in /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/merged_data/outs/possorted_genome_bam.bam
+Found 202693 reads with usable cloneIDs and UMIs. Skipped 14924 without cell id, 165 without UMI.
+Read 157304 reads containing (parts of) the cloneID (68969 full cloneIDs, 3001 unique)
+Detected 75856 molecules (43533 full cloneIDs, 2802 unique)
+70616 remain after low-complexity filtering
+After cloneID correction, 1645 unique cloneIDs remain
+After filtering cloneIDs, 1403 unique cloneIDs remain
+Detected 4261 cells
+Found 1722 single-read cloneIDs
+3959 filtered cells remain
+Writing UMI matrix
+Removing 0 bridges from the graph
+Removing 0 doublets from the graph (first round)
+Removing 0 bridges from the graph (second round)
+Plotting clone graph
+Removing 0 doublets from the graph (second round)
+Plotting corrected clone graph
+Detected 1658 clones
+Clone size histogram
+ size count
+    1  1026
+    2   228
+    3   120
+    4    84
+    5    49
+    6    27
+    7    23
+    8    22
+    9    14
+   10    17
+   11    14
+   12     5
+   13     4
+   14     2
+   15     6
+   16     3
+   17     2
+   18     2
+   19     3
+   20     1
+   22     2
+   28     1
+   29     1
+   30     1
+   31     1
+Average clone size: 2.39
+Trex 0.4.dev402+g34d30aa
+Command line arguments: qc --plot-jaccard-matrix --plot-hamming-distance /cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/Embryo1_final/E16_merged_E1_10_output_medium_5356cells
+Reading reads ...
+Reading molecules ...
+Reading corrected molecules ...
+Reading cells ...
+Reading filtered cells ...
+Reading clones ...
+Plotting clone size histogram
+Plotting unique cloneID per clone histogram
+Plotting unique cloneID per cell histogram
+Calculating and plotting Jaccard similarities
+Plotting reads per molecule histogram
+Plotting read length per step histograms
+Plotting Hamming distance per step histograms
+Plotting molecules per cell per step histograms
+Plotting molecules per cloneID per step histograms
+Plotting unique cloneIDs per cell per step histograms
+Wrote '/cfs/klemming/projects/snic/snic2021-6-80/Ziwei/trex_2025/Embryo1_final/E16_merged_E1_10_output_medium_5356cells/quality_report.pdf'

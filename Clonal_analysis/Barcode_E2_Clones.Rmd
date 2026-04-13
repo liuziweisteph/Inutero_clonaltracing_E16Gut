@@ -1,0 +1,1136 @@
+---
+title: "E16_clonal_information"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+options(Seurat.object.assay.version = "v5")
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(patchwork)
+library(scales)
+library(circlize)
+library(UpSetR)
+library(tidyr)
+library(ComplexHeatmap)
+```
+
+```{r}
+theme_set(
+  theme_classic(base_family = "Arial") +
+    theme(
+      plot.title = element_text(size = 10, face = "bold", hjust = 0.5),
+      legend.text = element_text(size = 8),
+      legend.title = element_text(size = 8),
+      axis.title = element_text(size = 8),
+      axis.text = element_text(size = 8)
+    )
+)
+```
+
+```{r}
+fig_dir_E2 <- "Figures/Fig4/"
+
+save_fig_E2 <- function(name, width = 7, height = 5, device = grDevices::pdf, bg = "white", dpi = 300) {
+  # Ensure directory exists
+  if (!dir.exists(fig_dir_E2)) dir.create(fig_dir_E2, recursive = TRUE)
+
+  ggsave(
+    filename = file.path(fig_dir_E2, name),
+    width = width,
+    height = height,
+    bg = bg,
+    dpi = dpi,
+    device = device
+  )
+}
+
+save_chordDiagram_E2 <- function(link_counts, cell_colors,
+                                 file_name, width = 10, height = 10, file_type = "pdf") {
+  if (!dir.exists(fig_dir_E2)) dir.create(fig_dir_E2, recursive = TRUE)
+  file_path <- file.path(fig_dir_E2, file_name)
+  circos.clear()
+
+  if (file_type == "pdf") {
+    grDevices::pdf(file_path, width = width, height = height)
+  } else if (file_type == "png") {
+    grDevices::png(file_path, width = width, height = height, units = "in", res = 300)
+  } else {
+    stop("file_type must be 'pdf' or 'png'")
+  }
+
+  circlize::chordDiagram(
+    x = link_counts,
+    grid.col = cell_colors,
+    transparency = 0.3,
+    directional = FALSE,
+    big.gap = 30
+  )
+  grDevices::dev.off()
+  message("Chord diagram saved to: ", normalizePath(file_path))
+}
+```
+
+```{r}
+distinct11 <- c("#377EB8", "#F5B375", "#A3CB38", "#C73681", "#E41A1C", "#84817b", "#A65628", "#FF7F00", "#FFD92F", "#984EA3", "#4DAF4A")
+distinct3<- c("#F1C40F", "#F8766D","#00BFC4")
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+E16_barcodes_E2 <- readRDS("Data/E16_barcodes_E2.rds")
+DimPlot(E16_barcodes_E2, reduction = "umap.harmony", label = T, group.by = "major_cell_type_2", cols = distinct11) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2") # Fig 4B
+```
+
+```{r}
+DimPlot(E16_barcodes_E2, reduction = "umap.harmony", group.by = "sample",cols= distinct3) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2") 
+save_fig_E2("umap_sample_E2.pdf") # Supplementary
+```
+
+```{r}
+# Create a pie graph
+sample_counts_E2 <- table(E16_barcodes_E2$sample)
+pdf(file.path(fig_dir_E2, "pie_sample_E2.pdf"), width = 8, height = 6)
+pie(sample_counts_E2,  main = "Sample Distribution of E16 Barcodes",
+  col=c("#F1C40F", "#F8766D","#00BFC4"),labels = NA
+)
+dev.off() # Supplementary
+```
+
+```{r}
+# Load clonal info from TREX output
+clonedata_E2 <- read.table("Clonal_analysis/TREX_output_E2/clones.txt", header = TRUE, sep = "\t")
+clonedata_E2$cell_id <- paste0(clonedata_E2$cell_id, "-1")
+
+# Summarize occurrences
+clone_summary_E2 <- clonedata_E2 %>%
+  group_by(clone_nr) %>%
+  summarise(count = n())
+
+n_unique_clones_E2 <- clonedata_E2 %>%
+  filter(!is.na(clone_nr)) %>%
+  summarise(n_unique_clones = n_distinct(clone_nr))
+
+clonedata_E2 %>%
+  filter(grepl("^(e16_s1|e16_ji1|e16_c1)", cell_id), !is.na(clone_nr)) %>%
+  mutate(prefix = str_extract(cell_id, "^(e16_s1|e16_ji1|e16_c1)")) %>%
+  group_by(prefix) %>%
+  summarise(n_unique_clones = n_distinct(clone_nr), .groups = "drop") %>%
+  arrange(prefix)
+
+sum(clone_summary_E2$count == 1) # 2488 single clones, 3421 clones in total
+sum(clone_summary_E2$count > 1) # 933 multicellular clones
+
+# Filter metadata and calculate the average size
+avg_clone_stats_E2 <- clonedata_E2 %>%
+  filter(!is.na(clone_nr)) %>%
+  left_join(clone_summary_E2, by = "clone_nr") %>%
+  filter(count > 1) %>%
+  group_by(clone_nr) %>%
+  summarise(n_cells = n(), .groups = "drop") %>%
+  summarise(
+    total_clones = n(),
+    mean_size = mean(n_cells),
+    median_size = median(n_cells),
+    max_size = max(n_cells)
+  )
+
+print(avg_clone_stats_E2)
+```
+
+```{r}
+# Histogram of clone sizes
+ggplot(clone_summary_E2, aes(x = count)) +
+  geom_histogram(binwidth = 1, fill = "steelblue") +
+  scale_y_continuous(limits = c(0, 2600), breaks = seq(0, 2600, by = 500), expand = c(0, 0)) +
+  labs(
+    title = "Distribution of Clone Sizes Experiment 2",
+    x = "Number of cells per CloneID",
+    y = "Frequency"
+  ) +
+  theme_bw() # Supplementary
+save_fig_E2("Supp/E2_clonesize.pdf")
+
+ggplot(clone_summary_E2, aes(x = count)) +
+  geom_histogram(binwidth = 1, fill = "#4C72B0") +
+  coord_cartesian(xlim = c(0, 30), ylim = c(0, 50)) +
+  scale_x_continuous(breaks = seq(0, 30, by = 1)) +
+  scale_y_continuous(breaks = seq(0, 50, by = 5), expand = c(0, 0)) +
+  labs(
+    title = "Zoomed View",
+    x = "Number of cells per CloneID",
+    y = "Frequency"
+  ) +
+  theme_bw() # Supplementary
+save_fig_E2("Supp/E2_clonesize_Zoomin3.pdf")
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+E16_E2_metadata <- E16_barcodes_E2@meta.data
+E16_E2_metadata <- E16_E2_metadata %>% left_join(clonedata_E2, by = c("cells" = "cell_id"))
+rownames(E16_E2_metadata) <- E16_E2_metadata$cells
+E16_E2_metadata <- E16_E2_metadata %>% mutate(clones = ifelse(is.na(clone_nr), "without CloneID", "with CloneID"))
+table(E16_E2_metadata$sample, E16_E2_metadata$clones)
+
+E16_barcodes_E2@meta.data <- E16_E2_metadata
+DimPlot(E16_barcodes_E2, reduction = "umap.harmony", group.by = "clones", cols = c("tomato", "steelblue")) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2") # Fig 4C
+save_fig_E2("E2_umap_cloneID.pdf")
+```
+
+```{r}
+# Create a pie graph
+E2_clones_counts <- table(E16_barcodes_E2$clones)
+pdf(file.path(fig_dir_E2, "pie_clonedistribution_E2.pdf"), width = 8, height = 6)
+pie(E2_clones_counts,
+  main = "CloneID Distribution of E16 Barcodes E2",
+  col = c("tomato", "steelblue"),
+  labels = paste(names(E2_clones_counts), " (", E2_clones_counts, ")", sep = "")
+)
+dev.off() 
+
+# Remove label
+pdf(file.path(fig_dir_E2, "pie_clonedistribution_nolabel_E2.pdf"), width = 8, height = 6)
+pie(E2_clones_counts,
+  col = c("tomato", "steelblue"),
+  labels = NA
+)
+dev.off()
+```
+
+```{r}
+table(E16_barcodes_E2@meta.data$clones) # 77.7% 16906/(16906+4843) =16906/21749 =77.7%
+VlnPlot(E16_barcodes_E2, group.by = "clones", features = c("nUMI", "nGene", "percent.mt"), cols = c("tomato", "steelblue"), ncol = 3, pt.size = 0.01) + plot_layout(guides = "collect") & theme(axis.title.x = element_blank())
+save_fig_E2("Supp/Vln_cloneID_E2.pdf", width = 12, height = 6) # Supplementary
+```
+
+```{r}
+clone_counts_E2 <- table(E16_barcodes_E2$clone_nr)
+E16_barcodes_E2$clones_per_cell <- ifelse(
+  is.na(E16_barcodes_E2$clone_nr),
+  0,
+  clone_counts_E2[as.character(E16_barcodes_E2$clone_nr)]
+)
+head(E16_barcodes_E2@meta.data)
+
+# clones with different number of cells,  0, 1, 2, 3, 4,5, 6 and more
+E16_barcodes_E2$clones_per_cell_2 <- E16_barcodes_E2$clones_per_cell
+E16_barcodes_E2$clones_per_cell_2[which(E16_barcodes_E2$clones_per_cell >= 6)] <- ">=6"
+clone_levels <- c("0", "1", "2", "3", "4", "5", ">=6")
+E16_barcodes_E2$clones_per_cell_2 <- factor(x = E16_barcodes_E2$clones_per_cell_2, levels = clone_levels)
+DimPlot(E16_barcodes_E2, reduction = "umap.harmony", group.by = "clones_per_cell_2", pt.size = 0.1, cols = c("0" = "#969696", "1" = "#e377c2", "2" = "#FC8D59", "3" = "#1A9850", "4" = "#1F78B4", "5" = "#8856A7", ">=6" = "#F0E442")) + ggtitle("Clone size") + xlab("UMAP1") + ylab("UMAP2")
+save_fig_E2("Supp/E2_umap_nocellsperclone.pdf")
+```
+
+```{r}
+# unicellualr clone, multicellular clones
+E16_barcodes_E2$clones_per_cell_3 <- E16_barcodes_E2$clones_per_cell
+E16_barcodes_E2$clones_per_cell_3[which(E16_barcodes_E2$clones_per_cell >= 2)] <- ">=2"
+clone_levels_3 <- c("0", "1", ">=2")
+E16_barcodes_E2$clones_per_cell_3 <- factor(x = E16_barcodes_E2$clones_per_cell_3, levels = clone_levels_3)
+DimPlot(E16_barcodes_E2, reduction = "umap.harmony", group.by = "clones_per_cell_3", pt.size = 0.2, cols = c("0" = "#969696", "1" = "#e377c2", ">=2" = "#0072B2")) + ggtitle("Unicellular and multicellular clones") + xlab("UMAP1") + ylab("UMAP2")
+save_fig_E2("Supp/E2_umap_unicellularandmulticellular_bysample.pdf")
+```
+
+```{r}
+# multicellular clones with  different cell types
+E16_barcodes_E2$clones_per_cell_4 <- E16_barcodes_E2$clones_per_cell
+E16_barcodes_E2$clones_per_cell_4[which(E16_barcodes_E2$clones_per_cell == 0)] <- "No CloneID"
+E16_barcodes_E2$clones_per_cell_4[which(E16_barcodes_E2$clones_per_cell == 1)] <- "Singleton"
+E16_barcodes_E2$clones_per_cell_4[which(E16_barcodes_E2$clones_per_cell >= 2)] <- "Multicellular"
+E16_barcodes_E2$clones_per_cell_4 <- factor(
+  E16_barcodes_E2$clones_per_cell_4,
+  levels = c("Singleton", "Multicellular", "No CloneID")
+)
+DimPlot(E16_barcodes_E2, reduction = "umap.harmony", group.by = "clones_per_cell_4", pt.size = 0.5, cols = c("No CloneID" = "#969696", "Singleton" = "#e377c2", "Multicellular" = "#0072B2")) + ggtitle("Singletons and multicellular clones") + xlab("UMAP1") + ylab("UMAP2") # Supplementary
+save_fig_E2("Supp/umap_singletonsandmulticellular.pdf")
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+# Clone categories type
+clone_metadata_E2 <- E16_barcodes_E2@meta.data %>%
+  filter(!is.na(clone_nr)) 
+
+clone_analysis_E2 <- clone_metadata_E2 %>%
+  dplyr::select(clone_nr, major_cell_type_2) %>%
+  filter(!is.na(major_cell_type_2))
+
+singleton_clones_E2 <- clone_analysis_E2 %>%
+  group_by(clone_nr) %>% 
+  tally() %>% 
+  filter(n == 1) %>% 
+  pull(clone_nr)
+
+length(singleton_clones_E2) # 2488 clones
+
+single_type_clones_E2 <- clone_metadata_E2 %>%
+  group_by(clone_nr) %>%
+  summarise(
+    n_cells = n(), # number of cells per clone
+    n_cell_types = n_distinct(major_cell_type_2), # number of cell types per clone
+    .groups = "drop"
+  ) %>%
+  filter(n_cell_types == 1, n_cells > 1) %>% # single-type and more than 1 cell
+  pull(clone_nr)
+
+length(single_type_clones_E2) # 394 single-type
+
+multi_type_clones_E2 <- clone_analysis_E2 %>%
+  group_by(clone_nr) %>%
+  summarise(n_cell_types = n_distinct(major_cell_type_2), .groups = "drop") %>%
+  filter(n_cell_types > 1) %>%
+  pull(clone_nr)
+length(multi_type_clones_E2) # 539 multi-type clones
+
+E16_barcodes_E2$clone_type <- case_when(
+  E16_barcodes_E2$clone_nr %in% single_type_clones_E2 ~ "Single-cell-type multicellular",
+  E16_barcodes_E2$clone_nr %in% multi_type_clones_E2 ~ "Multi-cell-type multicellular",
+  E16_barcodes_E2$clone_nr %in% singleton_clones_E2 ~ "Singleton",
+  is.na(E16_barcodes_E2$clone_nr) ~ "No CloneID",
+  TRUE ~ "Other"
+)
+
+E16_barcodes_E2$clone_type <- factor(
+  E16_barcodes_E2$clone_type,
+  levels = c("Singleton", "Single-cell-type multicellular", "Multi-cell-type multicellular", "No CloneID")
+)
+
+DimPlot(E16_barcodes_E2, reduction = "umap.harmony", group.by = "clone_type") + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2") 
+save_fig_E2("Supp/umap_differenttypesofclones_11celltypes_E2.pdf", height = 6, width = 10)
+```
+
+```{r}
+DimPlot(E16_barcodes_E2, reduction = "umap.harmony", group.by = "clone_type", split.by = "sample", pt.size = 0.5) + ggtitle("Different types of clones") + xlab("UMAP1") + ylab("UMAP2") # Supplementary
+save_fig_E2("Supp/umap_differenttypesofclones_splitbysample.pdf", width = 18, height = 6)
+```
+
+```{r}
+# Create a pie graph
+E2_clone_type_counts <- table(E16_barcodes_E2$clone_type)
+
+pdf(file.path(fig_dir_E2, "Supp/pie_clone_type_distribution_E2.pdf"), width = 8, height = 6)
+pie(E2_clone_type_counts,
+  main = "Clone Categories Distribution of E16 Barcodes E2",
+  col = cols_clonetype,
+  labels = paste(names(E2_clone_type_counts), " (", E2_clone_type_counts, " cells)", sep = "")
+)
+dev.off() # Supplementary
+
+# Remove label
+pdf(file.path(fig_dir_E2, "Supp/pie_clone_type_distribution_nolabel_E2.pdf"), width = 8, height = 6)
+pie(E2_clone_type_counts,
+  col = cols_clonetype,
+  labels = NA
+)
+dev.off()
+```
+
+```{r}
+# Count total clones per major cell type
+total_clones_per_type_E2 <- E16_barcodes_E2@meta.data %>%
+  group_by(major_cell_type_2) %>%
+  filter(clone_type != "No CloneID") %>%
+  summarise(total_clones = n_distinct(clone_nr), .groups = "drop")
+
+# Count singleton clones per major cell type
+num_singleton_clones_E2 <- E16_barcodes_E2@meta.data %>%
+  filter(clone_nr %in% singleton_clones_E2) %>%
+  group_by(major_cell_type_2) %>%
+  summarise(n_singleton = n_distinct(clone_nr), .groups = "drop")
+
+# Count single-type clones per major cell type
+num_single_type_clones_E2 <- E16_barcodes_E2@meta.data %>%
+  filter(clone_nr %in% single_type_clones_E2) %>%
+  group_by(major_cell_type_2) %>%
+  summarise(n_single_type = n_distinct(clone_nr), .groups = "drop")
+
+# Count multi-type clones per major cell type
+num_multi_type_clones_E2 <- E16_barcodes_E2@meta.data %>%
+  filter(clone_nr %in% multi_type_clones_E2) %>%
+  group_by(major_cell_type_2) %>%
+  summarise(n_multi_type = n_distinct(clone_nr), .groups = "drop")
+
+# Combine all counts
+clone_counts_E2 <- total_clones_per_type_E2 %>%
+  left_join(num_singleton_clones_E2, by = "major_cell_type_2") %>%
+  left_join(num_single_type_clones_E2, by = "major_cell_type_2") %>%
+  left_join(num_multi_type_clones_E2, by = "major_cell_type_2") %>%
+  mutate(
+    n_singleton = replace_na(n_singleton, 0),
+    n_single_type = replace_na(n_single_type, 0),
+    n_multi_type = replace_na(n_multi_type, 0)
+  ) %>%
+  mutate(
+    pct_singleton = n_singleton / total_clones * 100,
+    pct_single_type = n_single_type / total_clones * 100,
+    pct_multi_type = n_multi_type / total_clones * 100
+  )
+
+clone_counts_E2
+```
+
+```{r,fig.height = 6, fig.width = 15, fig.align = "center"}
+clone_fraction_df_E2 <- E16_barcodes_E2@meta.data %>%
+  filter(clone_type != "No CloneID") %>%
+  distinct(major_cell_type_2, clone_nr, clone_type) %>%
+  dplyr::count(major_cell_type_2, clone_type, name = "n_clones") %>% 
+  group_by(major_cell_type_2) %>%
+  mutate(
+    total_clones = sum(n_clones),
+    percent = 100 * n_clones / total_clones
+  ) %>%
+  ungroup()
+
+cell_fraction_df_E2 <- E16_barcodes_E2@meta.data %>%
+  filter(clone_type != "No CloneID") %>%
+  dplyr::count(major_cell_type_2, clone_type, name = "n_cells") %>%
+  group_by(major_cell_type_2) %>%
+  mutate(
+    total_cells = sum(n_cells),
+    percent = 100 * n_cells / total_cells
+  ) %>%
+  ungroup()
+
+cols_clonetype <- c(
+  "Singleton" = "#f0f0f0",   # light grey 
+  "Single-cell-type multicellular" = "#969696",
+  "Multi-cell-type multicellular" = "#252525"
+)
+
+p_clone_E2 <- ggplot(
+  clone_fraction_df_E2,
+  aes(x = major_cell_type_2, y = percent, fill = clone_type)
+) +
+  geom_col(width = 0.8) +
+  scale_fill_manual(values = cols_clonetype) +
+  scale_y_continuous(
+    limits = c(0, 101),
+    breaks = seq(0, 100, 25),
+    expand = c(0, 0)
+  ) +
+  labs(
+    x = "Cell type",
+    y = "% of clone categories",
+    fill = "Clone category",
+    title = "Clone-based composition (Lineage view)"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  )
+
+p_cell_E2 <- ggplot(
+  cell_fraction_df_E2,
+  aes(x = major_cell_type_2, y = percent, fill = clone_type)
+) +
+  geom_col(width = 0.8) +
+  scale_fill_manual(values = cols_clonetype) +
+  scale_y_continuous(
+    limits = c(0, 101),
+    breaks = seq(0, 100, 25),
+    expand = c(0, 0)
+  ) +
+  labs(
+    x = "Cell type",
+    y = "% of cells",
+    fill = "Clone category",
+    title = "Cell-based composition (Expansion view)"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+
+p_clone_E2 + p_cell_E2
+save_fig_E2("Clone_based_cell_clones_E2_newcolor.pdf", width = 12, height = 6) #Fig 4E
+```
+
+```{r}
+# Prepare for the Upset Plot For E2
+clone_metadata_E2 <- E16_barcodes_E2@meta.data %>%
+  filter(!is.na(clone_nr)) # remove NA
+
+clone_counts_E2 <- as.data.frame(table(clone_metadata_E2$clone_nr))
+colnames(clone_counts_E2) <- c("clone_nr", "cell_count")
+shared_clones_E2 <- clone_counts_E2 %>%
+  filter(cell_count > 1) # only leaving multicellular clones
+
+shared_clone_metadata_E2 <- clone_metadata_E2 %>%
+  filter(clone_nr %in% shared_clones_E2$clone_nr)
+
+clone_analysis_E2 <- shared_clone_metadata_E2 %>%
+  dplyr::select(clone_nr, major_cell_type_2)
+
+data_wide_E2 <- as.data.frame.matrix(table(clone_analysis_E2$clone_nr, clone_analysis_E2$major_cell_type_2))
+celltype_E2 <- colnames(data_wide_E2)
+set_sizes_E2 <- colSums(data_wide_E2)
+
+# Compute total number of cells per clone (sum across all cell types)
+clone_sizes_E2 <- rowSums(data_wide_E2)
+
+# Convert to binary for UpSet intersections
+binary_matrix_E2 <- data_wide_E2 %>%
+  mutate(across(everything(), ~ ifelse(. > 0, 1, 0))) 
+binary_matrix_E2$Clone_Size <- clone_sizes_E2
+sets_vec_E2 <- colnames(binary_matrix_E2)[-ncol(binary_matrix_E2)]
+```
+
+```{r,fig.height = 8, fig.width = 15, fig.align = "center"}
+pdf(file.path(fig_dir_E2, "Uplot_11celltypes_minimal2.pdf"), width = 17, height = 8, onefile = FALSE)
+grid::grid.newpage()
+upset(
+  binary_matrix_E2[, -ncol(binary_matrix_E2)],
+  sets = sets_vec_E2,
+  nintersects = 60, # minimum 2
+  order.by = "freq",
+  sets.x.label = "Total multicellular clones",
+  text.scale = c(2, 2, 2, 2, 2, 2),
+  point.size = 5
+) #Fig 4F
+dev.off()
+```
+
+```{r}
+clone_links_major_E2_2 <- E16_barcodes_E2@meta.data %>%
+  filter(clones_per_cell_4 == "Multicellular") %>%
+  dplyr::select(clone_nr, major_cell_type_2) %>%  
+  distinct()
+
+clone_pairs_E2_major_2 <- clone_links_major_E2_2 %>%
+  group_by(clone_nr) %>%
+  summarise(
+    types = list(unique(major_cell_type_2)),
+    n_types = n_distinct(major_cell_type_2),
+    .groups = "drop"
+  ) %>%
+  filter(n_types >= 2) %>%
+  rowwise() %>%
+  mutate(
+    pairs = list(combn(types, 2, simplify = FALSE))
+  ) %>%
+  tidyr::unnest(pairs) %>%
+  mutate(
+    from = sapply(pairs, `[`, 1),  
+    to   = sapply(pairs, `[`, 2),  
+    value = 1                       
+  ) %>%
+  ungroup() %>%
+  group_by(from, to) %>%           
+  summarise(value = sum(value), .groups = "drop")
+
+self_links_E2_major_2 <- clone_links_major_E2_2 %>%
+  group_by(clone_nr) %>%
+  summarise(
+    types = list(unique(major_cell_type_2)), 
+    n_types = n_distinct(major_cell_type_2),
+    .groups="drop"
+  ) %>%
+  filter(n_types == 1) %>%
+  mutate(
+    cell_type = sapply(types, `[`, 1),  
+    value = 1 
+  ) %>%
+  ungroup() %>%
+  group_by(cell_type) %>%               
+  summarise(value = sum(value), .groups = "drop") %>%
+  mutate(from = cell_type, to = cell_type) %>%
+  select(from, to, value)
+
+pairwise_links_all_E2_major_2 <- bind_rows(clone_pairs_E2_major_2, self_links_E2_major_2) 
+pairwise_links_all_E2_major_2 <- pairwise_links_all_E2_major_2 %>% dplyr::select(from, to, value)
+
+grid_colors_full <- setNames(distinct11, E16_barcodes_levels_major2)
+cell_types_E2 <- intersect(
+  E16_barcodes_levels_major2,
+  unique(c(pairwise_links_all_E2_major_2$from,
+           pairwise_links_all_E2_major_2$to))
+)
+grid_colors_E2 <- grid_colors_full[cell_types_E2]
+
+pdf(file.path(fig_dir_E2, "chorddigram_clonebased_E2_majortype_withepiblast_size4.pdf"), width = 4, height = 4)
+circos.clear()
+chordDiagram(
+  pairwise_links_all_E2_major_2,
+  grid.col = grid_colors_E2,
+  transparency = 0.4
+)   #Fig 4F
+dev.off()
+```
+
+```{r,fig.height = 8, fig.width = 10, fig.align = "center"}
+# Produce gene-wise Z-scores for pseudobulks, cell type transcriptomic similarity for correlation matrix for E2
+# Set cell identities
+Idents(E16_barcodes_E2) <- "assigned_cell_type"
+
+# Compute pseudobulk (average expression per cell type)
+genes.use_E2.1 <- VariableFeatures(E16_barcodes_E2) # 3000 genes
+expr_E2 <- GetAssayData(E16_barcodes_E2, assay = "SCT", layer = "data")[genes.use_E2.1, ] # rows genes-log normalised SCTransformed corrected UMIs columns cells
+
+df_corr_E2 <- data.frame(
+  cell = colnames(E16_barcodes_E2),
+  class = E16_barcodes_E2$assigned_cell_type,
+  t(expr_E2), # Transpose, from 3rd column onwards
+  check.names = FALSE
+)
+
+mean_expr_corr_E2 <- df_corr_E2 %>%
+  group_by(class) %>%
+  summarise(across(all_of(genes.use_E2.1), mean), .groups = "drop")
+
+mat_corr_E2 <- as.matrix(mean_expr_corr_E2[, -1]) 
+
+rownames(mat_corr_E2) <- mean_expr_corr_E2$class
+mat.z_E2 <- scale(mat_corr_E2)
+
+cor.mat_E2 <- cor(t(mat.z_E2), method = "pearson")
+## Hierarchical clustering
+dist.mat_E2 <- as.dist(1 - cor.mat_E2)
+hc_E2 <- hclust(dist.mat_E2, method = "average")
+
+pdf(file.path(fig_dir_E2, "gene-wise Z-scores_27celltypes.pdf"), width = 10, height = 8)
+Heatmap(
+  cor.mat_E2,
+  name = "Transcriptome correction",
+  cluster_rows = hc_E2,
+  cluster_columns = hc_E2,
+  col = colorRamp2(c(-1, 0, 1), c("#3B4CC0", "white", "#B40426")),
+  border = TRUE
+) # Supplementary
+dev.off()
+```
+
+```{r}
+# For Bandler-et al lineage anlaysis for Fig 4F 4G
+df_E2_clonal_celltype <- E16_barcodes_E2@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, major_cell_type_2) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = major_cell_type_2
+  )
+
+df_E2_clonal_subtype <- E16_barcodes_E2@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, assigned_cell_type) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = assigned_cell_type
+  )
+
+write.csv(df_E2_clonal_celltype, "Data/E2_df_clonalanalysis_majorcelltypes.csv", row.names = TRUE)
+write.csv(df_E2_clonal_subtype, "Data/E2_df_clonalanalysis_subtypes.csv", row.names = TRUE)
+```
+
+```{r}
+# Prepare for the Upset Plot For E2 3 germ layers
+clone_analysis_E2_2 <- shared_clone_metadata_E2 %>%
+  dplyr::select(clone_nr, major_cell_type_3)
+
+data_wide_E2_2 <- as.data.frame.matrix(table(clone_analysis_E2_2$clone_nr, clone_analysis_E2_2$major_cell_type_3))
+celltype_E2_2 <- colnames(data_wide_E2_2)
+set_sizes_E2_2 <- colSums(data_wide_E2_2)
+
+# Compute total number of cells per clone (sum across all cell types)
+clone_sizes_E2_2 <- rowSums(data_wide_E2_2)
+
+# Convert to binary for UpSet intersections
+binary_matrix_E2_2 <- data_wide_E2_2 %>%
+  mutate(across(everything(), ~ ifelse(. > 0, 1, 0))) # Convert non-zero values to 1
+binary_matrix_E2_2$Clone_Size <- clone_sizes_E2_2
+sets_vec_E2_2 <- colnames(binary_matrix_E2_2)[-ncol(binary_matrix_E2_2)]
+```
+
+```{r,fig.height = 6, fig.width = 8, fig.align = "center"}
+pdf(file.path(fig_dir_E2, "Uplot_3germlayers.pdf"), width = 8, height = 6, onefile = FALSE)
+grid::grid.newpage()
+upset(
+  binary_matrix_E2_2[, -ncol(binary_matrix_E2_2)],
+  sets = sets_vec_E2_2,
+  order.by = "freq",
+  point.size = 5,
+  sets.x.label = "Total multicellular clones",
+  text.scale = c(2, 2, 2, 2, 2, 2)
+)
+dev.off()
+```
+
+```{r}
+# For Bandler-et al lineage anlaysis for Fig 4F 4G
+df_E2_clonal_celltype_2 <- E16_E2_non_epiblast@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, major_cell_type_2) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = major_cell_type_2
+  )
+
+df_E2_clonal_subtype_2 <- E16_E2_non_epiblast@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, assigned_cell_type) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = assigned_cell_type
+  )
+
+write.csv(df_E2_clonal_celltype_2, "Data/E2_df_clonalanalysis_majorcelltypes_nonepiblast.csv", row.names = TRUE)
+write.csv(df_E2_clonal_subtype_2, "Data/E2_df_clonalanalysis_subtypes_nonepiblast.csv", row.names = TRUE)
+```
+
+```{r}
+#Just extracting mesodermal cells
+meso_clones <- shared_clone_metadata_E2 %>%
+  group_by(clone_nr) %>%
+  filter(
+    n_distinct(major_cell_type_3) == 1,
+    first(major_cell_type_3) == "Mesodermal"
+  ) %>%
+  ungroup() %>%
+  distinct(clone_nr) %>%
+  pull(clone_nr) #639 clones
+
+E16_barcodes_E2@meta.data <- E16_barcodes_E2@meta.data %>%
+  mutate(
+    meso_label = ifelse(
+      clone_nr %in% meso_clones,
+      "mesodermal",
+      "non-mesodermal"
+    )
+  )
+
+DimPlot(E16_barcodes_E2, reduction = "umap.harmony", group.by = "meso_label") + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2") 
+```
+
+```{r}
+# For Bandler-et al lineage anlaysis for Fig 4F 4G
+E16_E2_meso <- subset(
+  E16_barcodes_E2,
+  subset = meso_label == "mesodermal"
+)
+
+df_E2_clonal_celltype_3 <- E16_E2_meso@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, major_cell_type_2) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = major_cell_type_2
+  )
+
+df_E2_clonal_subtype_3 <- E16_E2_meso@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, assigned_cell_type) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = assigned_cell_type 
+  )
+
+write.csv(df_E2_clonal_celltype_3, "Data/E2_df_clonalanalysis_majorcelltypes_meso.csv", row.names = TRUE)
+write.csv(df_E2_clonal_subtype_3, "Data/E2_df_clonalanalysis_subtypes_meso.csv", row.names = TRUE)
+```
+
+```{r}
+saveRDS(object = E16_E2_non_epiblast, "Data/E16_barcodes_E2_epibastremoved.rds")
+saveRDS(object = E16_barcodes_E2, "Data/E16_barcodes_E2_2.rds")
+```
+```{r}
+# Prepare for the UpSet plot for E2 (three germ layers)
+clone_analysis_E2_2 <- shared_clone_metadata_E2 %>%
+  dplyr::select(clone_nr, major_cell_type_3)
+
+data_wide_E2_2 <- as.data.frame.matrix(table(clone_analysis_E2_2$clone_nr, clone_analysis_E2_2$major_cell_type_3))
+celltype_E2_2 <- colnames(data_wide_E2_2)
+set_sizes_E2_2 <- colSums(data_wide_E2_2)
+
+# Compute total number of cells per clone (sum across all cell types)
+clone_sizes_E2_2 <- rowSums(data_wide_E2_2)
+
+# Convert to binary for UpSet intersections
+binary_matrix_E2_2 <- data_wide_E2_2 %>%
+  mutate(across(everything(), ~ ifelse(. > 0, 1, 0))) 
+binary_matrix_E2_2$Clone_Size <- clone_sizes_E2_2
+sets_vec_E2_2 <- colnames(binary_matrix_E2_2)[-ncol(binary_matrix_E2_2)]
+```
+
+```{r,fig.height = 6, fig.width = 8, fig.align = "center"}
+pdf(file.path(fig_dir_E2, "Uplot_3germlayers.pdf"), width = 8, height = 6, onefile = FALSE)
+grid::grid.newpage()
+upset(
+  binary_matrix_E2_2[, -ncol(binary_matrix_E2_2)],
+  sets = sets_vec_E2_2,
+  order.by = "freq",
+  point.size = 5,
+  sets.x.label = "Total multicellular clones",
+  text.scale = c(2, 2, 2, 2, 2, 2)
+)
+dev.off() # Fig 4G
+```
+
+```{r}
+cols_links <- c(
+  "Mesodermal" = "#FFD700",  
+  "Neural Crest" = "#6a0dad",  
+  "Endodermal" = "#FF69B4"   
+)
+
+clone_links_E2 <- E16_barcodes_E2@meta.data %>%
+  filter(clones_per_cell_4 == "Multicellular") %>%
+  dplyr::select(clone_nr, major_cell_type_3) %>%  
+  distinct()
+
+clone_pairs_E2_2 <- clone_links_E2 %>%
+  group_by(clone_nr) %>%
+  summarise(
+    types = list(unique(major_cell_type_3)),
+    n_types = n_distinct(major_cell_type_3),
+    .groups = "drop"
+  ) %>%
+  filter(n_types >= 2) %>%
+  rowwise() %>%
+  mutate(
+    pairs = list(combn(types, 2, simplify = FALSE))
+  ) %>%
+  tidyr::unnest(pairs) %>%
+  mutate(
+    from = sapply(pairs, `[`, 1),  
+    to   = sapply(pairs, `[`, 2),  
+    value = 1                       
+  ) %>%
+  ungroup() %>%
+  group_by(from, to) %>%           
+  summarise(value = sum(value), .groups = "drop")
+
+self_links_E2_2 <- clone_links_E2 %>%
+  group_by(clone_nr) %>%
+  summarise(
+    types = list(unique(major_cell_type_3)), 
+    n_types = n_distinct(major_cell_type_3),
+    .groups="drop"
+  ) %>%
+  filter(n_types == 1) %>%
+  mutate(
+    cell_type = sapply(types, `[`, 1),  
+    value = 1
+  ) %>%
+  ungroup() %>%
+  group_by(cell_type) %>%                
+  summarise(value = sum(value), .groups = "drop") %>%
+  mutate(from = cell_type, to = cell_type) %>%
+  select(from, to, value)
+
+pairwise_links_all_E2_2 <- bind_rows(clone_pairs_E2_2, self_links_E2_2) 
+pairwise_links_all_E2_2 <- pairwise_links_all_E2_2 %>% dplyr::select(from, to, value)
+
+sectors <- unique(c(pairwise_links_all_E2_2$from, pairwise_links_all_E2_2$to))
+grid.col <- cols_links[sectors]
+
+pdf(file.path(fig_dir_E2, "chorddigram_clonebased_E2.pdf"), width = 3, height = 3)
+circos.clear()
+chordDiagram(
+  pairwise_links_all_E2_2,
+  grid.col = grid.col,
+  transparency = 0.4 
+)  # Fig 4G
+dev.off()
+```
+
+```{r}
+#Remove the noise, keep the ones 
+distinct_clones_E2 <- shared_clone_metadata_E2 %>%
+  group_by(clone_nr) %>%
+  filter(n_distinct(major_cell_type_3) == 1) %>%
+  ungroup() %>%
+  distinct(clone_nr) %>%
+  pull(clone_nr)# 851 CloneIDs
+
+E16_barcodes_E2@meta.data <- E16_barcodes_E2@meta.data %>%
+  mutate(
+    epiblast_label = ifelse(
+      clone_nr %in% distinct_clones_E2,
+      "non-epiblast",
+      "epiblast" # or singleton or noCloneID
+    )
+  )
+
+DimPlot(E16_barcodes_E2, reduction = "umap.harmony", group.by = "epiblast_label") + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2") # Supplementary
+```
+
+```{r}
+E16_E2_non_epiblast <- subset(
+  E16_barcodes_E2,
+  subset = epiblast_label == "non-epiblast"
+)
+
+DimPlot(E16_E2_non_epiblast, reduction = "umap.harmony") + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+```
+
+```{r}
+# For Bandler et al. lineage analysis for Fig 4H 
+df_E2_clonal_celltype_2 <- E16_E2_non_epiblast@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, major_cell_type_2) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = major_cell_type_2
+  )
+
+df_E2_clonal_subtype_2 <- E16_E2_non_epiblast@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, assigned_cell_type) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = assigned_cell_type
+  )
+
+write.csv(df_E2_clonal_celltype_2, "Data/E2_df_clonalanalysis_majorcelltypes_nonepiblast.csv", row.names = TRUE)
+write.csv(df_E2_clonal_subtype_2, "Data/E2_df_clonalanalysis_subtypes_nonepiblast.csv", row.names = TRUE)
+```
+
+```{r}
+# Just extracting mesodermal cells
+meso_clones <- shared_clone_metadata_E2 %>%
+  group_by(clone_nr) %>%
+  filter(
+    n_distinct(major_cell_type_3) == 1,
+    first(major_cell_type_3) == "Mesodermal"
+  ) %>%
+  ungroup() %>%
+  distinct(clone_nr) %>%
+  pull(clone_nr) #639 clones
+
+E16_barcodes_E2@meta.data <- E16_barcodes_E2@meta.data %>%
+  mutate(
+    meso_label = ifelse(
+      clone_nr %in% meso_clones,
+      "mesodermal",
+      "non-mesodermal"
+    )
+  )
+
+DimPlot(E16_barcodes_E2, reduction = "umap.harmony", group.by = "meso_label") + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2") 
+```
+
+```{r}
+# For Bandler et al. lineage analysis for Fig 4I
+E16_E2_meso <- subset(
+  E16_barcodes_E2,
+  subset = meso_label == "mesodermal"
+)
+
+df_E2_clonal_celltype_3 <- E16_E2_meso@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, major_cell_type_2) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = major_cell_type_2
+  )
+
+df_E2_clonal_subtype_3 <- E16_E2_meso@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, assigned_cell_type) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = assigned_cell_type 
+  )
+
+write.csv(df_E2_clonal_celltype_3, "Data/E2_df_clonalanalysis_majorcelltypes_meso.csv", row.names = TRUE)
+write.csv(df_E2_clonal_subtype_3, "Data/E2_df_clonalanalysis_subtypes_meso.csv", row.names = TRUE)
+```
+
+```{r}
+E16_E2_immune <- subset(
+  E16_barcodes_E2, 
+  subset = major_cell_type_2 == "Immune"
+)
+
+mrc1_E2_cells <- WhichCells(
+  E16_E2_immune,
+  expression = Mrc1 > 1
+)
+length(mrc1_E2_cells) # 66 cells
+
+DimPlot(
+  E16_E2_immune,
+  reduction = "umap.harmony",
+  cells.highlight = mrc1_E2_cells,
+  cols.highlight = "red",
+  cols = "grey80"
+)+
+  ggtitle("Mrc1-expressing cells highlighted)") +
+  xlab("UMAP1") +
+  ylab("UMAP2")
+save_fig_E2("E2_Immune_Mrc1cells.pdf", width = 4, height = 3)
+```
+
+```{r}
+Trbc_E2_cells <- WhichCells(
+  E16_E2_immune,
+  expression = Trbc1 >0 | Trbc2 > 0
+)
+length(Trbc_E2_cells) # 191 cells
+
+DimPlot(
+  E16_E2_immune,
+  reduction = "umap.harmony",
+  cells.highlight = Trbc_E2_cells,
+  cols.highlight = "blue",
+  cols = "grey80"
+)+
+  ggtitle("Trbc1 and Trbc2 expressing cells highlighted") +
+  xlab("UMAP1") +
+  ylab("UMAP2")
+save_fig_E2("E2_Immune_Trbccells.pdf", width = 4, height = 3)
+```
+
+```{r}
+E16_E2_immune$sharing_group <- "Other"
+E16_E2_immune$sharing_group[mrc1_E2_cells] <- "Mrc1_Macrophage"
+E16_E2_immune$sharing_group[Trbc_E2_cells] <- "Trbc_Tcell"
+
+
+cell_labels_E2 <- data.frame(
+  cell_id = c(mrc1_E2_cells, Trbc_E2_cells),
+  type = c(rep("Mrc1_Macrophage", length(mrc1_E2_cells)), 
+           rep("Trbc_Tcell", length(Trbc_E2_cells)))
+)
+
+clone_links_immune_E2 <- E16_E2_immune@meta.data %>%
+  rownames_to_column("cell_id") %>%
+  inner_join(cell_labels_E2, by = "cell_id") %>%
+  filter(clones_per_cell_4 == "Multicellular") %>%
+  filter(!is.na(clone_nr)) %>%
+  group_by(clone_nr) %>%
+  filter(n_distinct(major_cell_type_3) == 1) %>% 
+  ungroup() %>%
+  select(clone_nr, type)
+
+clone_pairs_individual_E2<- clone_links_immune_E2 %>%
+  group_by(clone_nr) %>%
+  filter(n_distinct(type) >= 2) %>%
+  summarise(types = list(unique(type)), .groups = "drop") %>%
+  rowwise() %>%
+  mutate(pairs = list(combn(types, 2, simplify = FALSE))) %>%
+  tidyr::unnest(pairs) %>%
+  mutate(
+    from = sapply(pairs, `[`, 1),
+    to   = sapply(pairs, `[`, 2),
+    value = 1  
+  ) %>%
+  ungroup()
+
+self_links_individual_E2<- clone_links_immune_E2 %>%
+  group_by(clone_nr) %>%
+  filter(n_distinct(type) == 1) %>%
+  summarise(type = type[1], .groups = "drop") %>%
+  mutate(from = type, to = type, value = 1)
+
+pairwise_links_all_fine_E2 <- bind_rows(clone_pairs_individual_E2, self_links_individual_E2) %>%
+  select(from, to, value)
+
+colnames(links) <- c("from", "to", "value")
+grid_col = c(Mrc1_Macrophage = "#D7191C", Trbc_Tcell = "#2C7BB6")
+
+pdf(file.path(fig_dir_E2, "chorddigram_immunecels_E2.pdf"), width = 4, height = 4)
+circos.clear()
+chordDiagram(
+  pairwise_links_all_fine_E2,
+  grid.col = grid_col,
+  transparency = 0.4,
+  self.link = 1,          
+  link.lwd = 0.1,
+  annotationTrack = c("grid", "name") 
+) # Fig 4J
+dev.off()
+```
+
+```{r}
+clone_data_E2 <- E16_E2_immune@meta.data %>%
+  rownames_to_column("cell_id") %>%
+  inner_join(cell_labels_E2, by = "cell_id") %>%
+  filter(!is.na(clone_nr)) %>%
+  filter(clones_per_cell_4 == "Multicellular") %>%
+  filter(n_distinct(major_cell_type_3) == 1) 
+
+
+clone_categories <- clone_data_E2 %>%
+  group_by(clone_nr) %>%
+  summarise(
+    has_mrc1 = any(type == "Mrc1_Macrophage"),
+    has_trbc = any(type == "Trbc_Tcell"),
+    .groups = "drop"
+  ) %>%
+  mutate(category = case_when(
+    has_mrc1 & has_trbc ~ "Shared_Clone",
+    has_mrc1 ~ "Self_Mrc1_Only",
+    has_trbc ~ "Self_Trbc_Only"
+  ))
+
+
+clonal_summary_stats <- clone_categories %>%
+  group_by(category) %>%
+  summarise(
+    number_of_clones = n(),
+    .groups = "drop"
+  )
+clonal_summary_stats 
+```
+
+```{r}
+E16_E2_ENS <- subset(E16_barcodes_E2, subset = epiblast_label == "non-epiblast" & major_cell_type_2 == "ENS")
+ENS_cell_types <- levels(as.factor(E16_E2_ENS$assigned_cell_type))
+ens_palette <- setNames(distinct27[1:length(ENS_cell_types)], ENS_cell_types)
+DimPlot(E16_E2_ENS, reduction='umap.harmony',cols = ens_palette,label = T, repel = T) + xlab("UMAP1") + ylab("UMAP2")+NoLegend()#2393 cells -  108 clones shared regionally but 178 clones in total 
+save_fig_regions("E16_E2_ENS_2393cells_178clones.pdf", width = 4, height = 6) 
+```
+
+```{r}
+length(unique(na.omit(E16_E2_ENS$clone_nr))) #178 clones
+
+upset_data_ens <- E16_E2_ENS@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  mutate(assigned_cell_type = as.character(assigned_cell_type)) %>%
+  distinct(clone_nr, assigned_cell_type) %>%
+  mutate(present = 1) %>%
+  pivot_wider(
+    names_from = assigned_cell_type, 
+    values_from = present, 
+    values_fill = 0
+  ) %>%
+  as.data.frame()
+
+
+celltype_sets <- colnames(upset_data_ens)[colnames(upset_data_ens) != "clone_nr"]
+current_palette <- ens_palette[celltype_sets]
+pdf(file.path(fig_dir_regions, "E2_178ENSclones_intersectionmorethan3.pdf"), width = 8, height = 6, onefile = FALSE)
+upset(upset_data_ens, 
+      sets = celltype_sets, 
+      order.by = "freq", 
+      sets.bar.color = current_palette,   
+      main.bar.color = "#6a0dad",   
+      shade.color = "#e8daef",
+      point.size = 3.5, 
+      line.size = 1,
+      text.scale = 1.5,
+      nintersects = 15) # ENS only, intersection more than 3
+dev.off() # Fig 4K
+```
+
+```{r}
+saveRDS(object = E16_E2_non_epiblast, "Data/E16_barcodes_E2_epiblastremoved.rds")
+saveRDS(object = E16_barcodes_E2, "Data/E16_barcodes_E2_2.rds")
+saveRDS(object = E16_E2_ENS, "Data/E16_barcodes_ENS_E2.rds")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

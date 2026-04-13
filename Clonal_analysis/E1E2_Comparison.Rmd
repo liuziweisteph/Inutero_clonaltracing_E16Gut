@@ -1,0 +1,557 @@
+---
+title: "Experiment 1 vs Experiment 2 — clonal comparison"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+library(Seurat)
+options(Seurat.object.assay.version = "v5")
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+library(scales)
+library(tidyr)
+library(ggpubr)
+library(ggalluvial)
+```
+
+```{r}
+theme_set(
+  theme_classic(base_family = "Arial") +
+    theme(
+      plot.title = element_text(size = 10, face = "bold", hjust = 0.5),
+      legend.text = element_text(size = 8),
+      legend.title = element_text(size = 8),
+      axis.title = element_text(size = 8),
+      axis.text = element_text(size = 8)
+    )
+)
+```
+
+```{r}
+fig_dir_E1E2 <- "Figures/Fig5/"
+
+save_fig_E1E2 <- function(name, width = 7, height = 5, device = grDevices::pdf, bg = "white", dpi = 300) {
+  # Ensure directory exists
+  if (!dir.exists(fig_dir_E1E2)) dir.create(fig_dir_E1E2, recursive = TRUE)
+
+  ggsave(
+    filename = file.path(fig_dir_E1E2, name),
+    width = width,
+    height = height,
+    bg = bg,
+    dpi = dpi,
+    device = device
+  )
+}
+```
+
+```{r}
+distinct11 <- c("#377EB8", "#F5B375", "#A3CB38", "#C73681", "#E41A1C", "#84817b", "#A65628", "#FF7F00", "#FFD92F", "#984EA3", "#4DAF4A")
+```
+
+```{r}
+# Annotated Seurat objects (cell types + clonal metadata; see Preprocessing and Clonal notebooks)
+E16_barcodes <- readRDS("Data/E16_barcodes_E1_20260320.rds")
+E16_barcodes_E2 <- readRDS("Data/E16_E2_Seurat_updated.rds")
+```
+
+```{r}
+# The number of cells per cell type in E1 # Supplementary
+total_cells_E1 <- E16_barcodes@meta.data %>%
+  group_by(major_cell_type_2) %>% 
+  summarise(total_cells = n())
+
+ggplot(total_cells_E1, aes(x = major_cell_type_2, y = total_cells, fill = major_cell_type_2)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  scale_y_continuous(limits = c(0, 3100), breaks = seq(0, 3100, by = 500), expand = c(0, 0)) +
+  ylab("Number of cells") +
+  xlab("Cell type") +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+save_fig_E1E2("bar_no_E1_11types.pdf", width = 6, height = 5)
+```
+
+```{r}
+# The number of cells per cell type in E2 # Supplementary
+total_cells_E2 <- E16_barcodes_E2@meta.data %>%
+  group_by(major_cell_type_2) %>% 
+  summarise(total_cells = n())
+
+ggplot(total_cells_E2, aes(x = major_cell_type_2, y = total_cells, fill = major_cell_type_2)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  scale_y_continuous(limits = c(0, 9000), breaks = seq(0, 9000, by = 1000), expand = c(0, 0)) +
+  ylab("Number of cells") +
+  xlab("Cell type") +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+save_fig_E1E2("bar_no_E2_11types.pdf", width = 6, height = 5)
+```
+
+```{r}
+# the proportion of cells  per cell type in E1
+prop_E16_barcodes <- E16_barcodes@meta.data %>%
+  as.data.frame() %>%
+  dplyr::count(major_cell_type_2) %>%
+  dplyr::mutate(prop = n / sum(n))
+
+# bar plot
+ggplot(prop_E16_barcodes, aes(x = major_cell_type_2, y = prop, fill = major_cell_type_2)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  ylab("Proportion of cells profiled") +
+  xlab("Cell type") +
+  scale_y_continuous(limits = c(0, 0.6), breaks = seq(0, 0.6, by = 0.1), expand = c(0, 0)) +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+save_fig_E1E2("bar_prop_E1_11types.pdf", width = 6, height = 5)
+```
+
+```{r,fig.height = 5, fig.width = 6, fig.align = "center"}
+# the proportion of cells  per cell type in E2
+prop_E16_barcodes_E2 <- E16_barcodes_E2@meta.data %>%
+  as.data.frame() %>%
+  dplyr::count(major_cell_type_2) %>%
+  dplyr::mutate(prop = n / sum(n))
+
+# bar plot
+ggplot(prop_E16_barcodes_E2, aes(x = major_cell_type_2, y = prop, fill = major_cell_type_2)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  ylab("Proportion of cells profiled") +
+  xlab("Cell type") +
+  scale_y_continuous(limits = c(0, 0.4), breaks = seq(0, 0.4, by = 0.05), expand = c(0, 0)) +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+save_fig_E1E2("bar_prop_E2_11types.pdf", width = 6, height = 5)
+```
+
+```{r}
+#considered the ones with cloneID
+# the proportion of cells  per cell type in E1 with cloneID
+prop_E16_barcodes_withcloneID <- E16_barcodes@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  as.data.frame() %>%
+  dplyr::count(major_cell_type_2) %>%
+  dplyr::mutate(prop = n / sum(n))
+
+# bar plot
+ggplot(prop_E16_barcodes_withcloneID, aes(x = major_cell_type_2, y = prop, fill = major_cell_type_2)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  ylab("Proportion of cells (withCloneID)") +
+  xlab("Cell type") +
+  scale_y_continuous(limits = c(0, 0.6), breaks = seq(0, 0.6, by = 0.1), expand = c(0, 0)) +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+save_fig_E1E2("bar_prop_E1_11types_onlycellswithcloneid.pdf", width = 6, height = 5)
+```
+
+```{r}
+#considered the ones with cloneID
+# the proportion of cells  per cell type in E1 with cloneID
+prop_E16_barcodes_E2_withcloneID <- E16_barcodes_E2@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  as.data.frame() %>%
+  dplyr::count(major_cell_type_2) %>%
+  dplyr::mutate(prop = n / sum(n))
+
+# bar plot
+ggplot(prop_E16_barcodes_E2_withcloneID, aes(x = major_cell_type_2, y = prop, fill = major_cell_type_2)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  ylab("Proportion of cells (withCloneID)") +
+  xlab("Cell type") +
+  scale_y_continuous(limits = c(0, 0.6), breaks = seq(0, 0.6, by = 0.1), expand = c(0, 0)) +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+save_fig_E1E2("bar_prop_E2_11types_onlycellswithcloneid.pdf", width = 6, height = 5)
+```
+
+```{r}
+#Regardless of CloneID or not
+prop_E16_barcodes$dataset <- "Experiment 1"
+prop_E16_barcodes_E2$dataset <- "Experiment 2"
+comp <- bind_rows(prop_E16_barcodes, prop_E16_barcodes_E2)
+celltype_order <- unique(comp$major_cell_type_2)
+
+comp$major_cell_type_2 <- factor(
+  comp$major_cell_type_2,
+  levels = celltype_order
+)
+
+comp$dataset <- factor(
+  comp$dataset,
+  levels = c("Experiment 1", "Experiment 2")
+)
+
+ggplot(comp, aes(x = dataset, y = prop, fill = major_cell_type_2)) +
+  geom_bar(stat = "identity", width = 0.65, color = "black") +
+  scale_y_continuous(
+    labels = scales::percent,
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.12),
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(values = distinct11) +
+  labs(y = "Proportion of cells", x = NULL, fill = NULL) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 12),
+    axis.title.y = element_text(size = 13),
+    legend.text = element_text(size = 10)
+  )
+```
+
+```{r,fig.height = 4, fig.width = 5, fig.align = "center"}
+alluvial_df_fixed <- comp %>%
+  select(major_cell_type_2, dataset, prop) %>%
+  pivot_wider(
+    names_from = dataset,
+    values_from = prop,
+    values_fill = 0
+  )
+
+alluvial_long <- alluvial_df_fixed %>%
+  pivot_longer(
+    cols = c("Experiment 1", "Experiment 2"),
+    names_to = "dataset",
+    values_to = "value"
+  )
+
+ggplot(
+  alluvial_long,
+  aes(
+    x = dataset,
+    stratum = major_cell_type_2,
+    alluvium = major_cell_type_2,
+    y = value
+  )
+) +
+  geom_alluvium(aes(fill = major_cell_type_2),
+    width = 0.3,
+    alpha = 0.5
+  ) +
+  geom_stratum(aes(fill = major_cell_type_2),
+    width = 0.3,
+    linewidth = 0.3
+  ) +
+  scale_fill_manual(values = distinct11) +
+  scale_x_discrete(labels = c("Experiment 1", "Experiment 2")) +
+  scale_y_continuous(
+    labels = scales::percent,
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.12),
+    expand = c(0, 0)
+  ) +
+  labs(y = "Proportion of cells", x = NULL, fill = NULL) +
+  theme_classic()
+save_fig_E1E2("E1E2_comparison_11types.pdf", width = 5, height = 4) # Fig 4C
+```
+
+```{r}
+# The number of cells in clones and the proportion of cells in clones per cell type in E1  #Supplementary
+clone_summary_E1 <- E16_barcodes@meta.data %>%
+  group_by(major_cell_type_2) %>%
+  summarise(
+    total_cells = n(),
+    clonal_cells = sum(clones == "with CloneID")
+  ) %>%
+  mutate(
+    proportion_clonal = clonal_cells / total_cells
+  )
+
+ggplot(clone_summary_E1, aes(x = major_cell_type_2, y = clonal_cells, fill = major_cell_type_2)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  scale_y_continuous(limits = c(0, 2500), breaks = seq(0, 2500, by = 500), expand = c(0, 0)) +
+  ylab("Number of cells with CloneID") +
+  xlab("Cell type") +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+save_fig_E1E2("bar_no_withCloneID_E1_11types.pdf", width = 6, height = 5)
+
+ggplot(clone_summary_E1, aes(x = major_cell_type_2, y = proportion_clonal, fill = major_cell_type_2)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1.00), breaks = seq(0, 1.00, by = 0.20), expand = c(0, 0)) +
+  ylab("Proportion of cells with CloneID") +
+  xlab("Cell type") +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+
+save_fig_E1E2("bar_prop_withCloneID_E1_11types.pdf", width = 6, height = 5)
+```
+
+```{r}
+# The number of cells in clones and the proportion of cells in clones per cell type in E2 # Supplementary
+clone_summary_E2 <- E16_barcodes_E2@meta.data %>%
+  group_by(major_cell_type_2) %>%
+  summarise(
+    total_cells = n(),
+    clonal_cells = sum(clones == "with CloneID")
+  ) %>%
+  mutate(
+    proportion_clonal = clonal_cells / total_cells
+  )
+
+ggplot(clone_summary_E2, aes(x = major_cell_type_2, y = clonal_cells, fill = major_cell_type_2)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  scale_y_continuous(limits = c(0, 7000), breaks = seq(0, 7000, by = 1000), expand = c(0, 0)) +
+  ylab("Number of cells with CloneID") +
+  xlab("Cell type") +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+save_fig_E1E2("bar_no_withCloneID_E2_11types.pdf", width = 6, height = 5)
+
+ggplot(clone_summary_E2, aes(x = major_cell_type_2, y = proportion_clonal, fill = major_cell_type_2)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1.00), breaks = seq(0, 1.00, by = 0.20), expand = c(0, 0)) +
+  ylab("Proportion of cells with CloneID") +
+  xlab("Cell type") +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+
+save_fig_E1E2("bar_prop_withCloneID_E2_11types.pdf", width = 6, height = 5)
+```
+
+```{r}
+# How many barcodes per cell in Experiment 1
+cells_barcodes <- read.delim(
+  "Clonal_analysis/TREX_output_E1/clone_details.txt",
+  stringsAsFactors = FALSE
+)
+
+cells_barcodes$clone_ids_per_cell <- factor(cells_barcodes$clone_ids_per_cell)
+# Count frequencies
+freq_table <- dplyr::count(cells_barcodes, clone_ids_per_cell)
+
+cell_types <- levels(cells_barcodes$clone_ids_per_cell)
+cell_colors <- hue_pal()(length(cell_types))
+names(cell_colors) <- cell_types
+
+ggplot(freq_table, aes(x = clone_ids_per_cell, y = n, fill = clone_ids_per_cell)) + 
+  geom_bar(stat = "identity", width = 0.9) +
+  scale_fill_manual(values = cell_colors) +
+  scale_y_continuous(limits = c(0, 1300), expand = c(0, 0)) +
+  labs(
+    x = "Barcodes per CloneID",
+    y = "Number of clones"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(size = 14, angle = 0, vjust = 0.5),
+    axis.title.x = element_text(size = 12, face = "bold"),
+    axis.title.y = element_text(size = 12, face = "bold"),
+    panel.grid.major.x = element_blank(),
+    legend.position = "none"
+  ) # Supplementary
+
+save_fig_E1E2("barcodes_percloneID_E1.pdf", width = 6, height = 5)
+```
+
+```{r}
+freq_table <- dplyr::count(cells_barcodes, clone_ids_per_cell) %>%
+  mutate(
+    percent = n / sum(n) * 100,
+    label = paste0(round(percent, 1), "%")
+  )
+
+head(freq_table)
+
+pdf(file.path(fig_dir_E1E2, "pie_barcodes_percloneID_E1.pdf"), width = 8, height = 6)
+ggplot(
+  freq_table,
+  aes(x = "", y = n, fill = factor(clone_ids_per_cell))
+) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(fill = "Barcodes per CloneID") +
+  theme_void() +
+  theme(legend.position = "none")
+dev.off()
+```
+
+```{r}
+# How many barcodes per cell in Experiment 2
+cells_barcodes_E2 <- read.delim(
+  "Clonal_analysis/TREX_output_E2/clone_details.txt",
+  stringsAsFactors = FALSE
+)
+cells_barcodes_E2$clone_ids_per_cell <- factor(cells_barcodes_E2$clone_ids_per_cell)
+# Count frequencies
+freq_table_E2 <- dplyr::count(cells_barcodes_E2, clone_ids_per_cell)
+
+cell_types_E2 <- levels(cells_barcodes_E2$clone_ids_per_cell)
+cell_colors_E2 <- hue_pal()(length(cell_types_E2))
+names(cell_colors_E2) <- cell_types_E2
+
+ggplot(freq_table_E2, aes(x = clone_ids_per_cell, y = n, fill = clone_ids_per_cell)) +
+  geom_bar(stat = "identity", width = 0.9) +
+  scale_fill_manual(values = cell_colors_E2) +
+  scale_y_continuous(limits = c(0, 2000), breaks = seq(0, 2000, by = 250), expand = c(0, 0)) +
+  labs(
+    x = "Barcodes per CloneID",
+    y = "Number of clones"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(size = 14, angle = 0, vjust = 0.5),
+    axis.title.x = element_text(size = 12, face = "bold"),
+    axis.title.y = element_text(size = 12, face = "bold"),
+    panel.grid.major.x = element_blank(),
+    legend.position = "none"
+  ) # Supplementary
+
+save_fig_E1E2("barcodes_percloneID_E2.pdf", width = 6, height = 5)
+```
+
+```{r}
+freq_table_E2 <- dplyr::count(cells_barcodes_E2, clone_ids_per_cell) %>%
+  mutate(
+    percent = n / sum(n) * 100,
+    label = paste0(round(percent, 1), "%")
+  )
+
+pdf(file.path(fig_dir_E1E2, "pie_barcodes_percloneID_E2.pdf"), width = 8, height = 6)
+ggplot(
+  freq_table_E2,
+  aes(x = "", y = n, fill = factor(clone_ids_per_cell))
+) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(fill = "Barcodes per CloneID") +
+  theme_void() +
+  theme(legend.position = "none")
+dev.off()
+```
+
+```{r}
+# Experiment 1
+clone_summary_region <- E16_barcodes@meta.data %>%
+  group_by(sample, major_cell_type_2) %>%
+  summarise(
+    total_cells = n(),
+    clonal_cells = sum(clones == "with CloneID"),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    proportion_clonal = clonal_cells / total_cells
+  )
+```
+
+```{r}
+clone_summary_region$sample <- factor(
+  clone_summary_region$sample,
+  levels = c("E16_stomach", "E16_ileum")
+)
+
+ggplot(
+  clone_summary_region,
+  aes(
+    x = major_cell_type_2,
+    y = proportion_clonal,
+    fill = major_cell_type_2
+  )
+) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~sample) +
+  scale_fill_manual(values = distinct11) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1.00), breaks = seq(0, 1.00, by = 0.20), expand = c(0, 0)) +
+  ylab("Proportion of cells with CloneID") +
+  xlab("Cell type") +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+save_fig_E1E2("proportionofcellswithCloneIDacrossregion_E1.pdf", width = 8, height = 5)
+```
+
+```{r}
+# Experiment 2
+clone_summary_region_2 <- E16_barcodes_E2@meta.data %>%
+  group_by(sample, major_cell_type_2) %>%
+  summarise(
+    total_cells = n(),
+    clonal_cells = sum(clones == "with CloneID"),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    proportion_clonal = clonal_cells / total_cells
+  )
+```
+
+```{r}
+clone_summary_region_2$sample <- factor(
+  clone_summary_region_2$sample,
+  levels = c("E16_stomach", "E16_jej_ileum", "E16_colon")
+)
+
+ggplot(
+  clone_summary_region_2,
+  aes(
+    x = major_cell_type_2,
+    y = proportion_clonal,
+    fill = major_cell_type_2
+  )
+) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1.00), breaks = seq(0, 1.00, by = 0.20), expand = c(0, 0)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~sample) +
+  scale_fill_manual(values = distinct11) +
+  ylab("Proportion of cells with CloneID") +
+  xlab("Cell type") +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+save_fig_E1E2("proportionofcellswithCloneIDacrossregion_E2.pdf", width = 10, height = 5)
+```
+
+
+
+
+
+
+
+
+
