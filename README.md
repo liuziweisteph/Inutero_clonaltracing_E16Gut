@@ -332,4 +332,4 @@ Across all scripts, the main Seurat objects follow a consistent naming scheme:
 
 This project is licensed under the **MIT License** — see `[LICENSE](LICENSE)` for details.
 
-Copyright (c) 2025 Ziwei Liu
+Copyright (c) 2025 Ziwei Liu, Karolinska Institutet, 2026
