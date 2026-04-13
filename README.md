@@ -212,7 +212,6 @@ The `E9E10/E9E10_analysis` notebook is a **Python/Scanpy** reanalysis of publicl
 7. Characterise clusters using curated marker panels for vagal, cranial, sympathetic, parasympathetic, and ENS identity
 8. Hox gene expression analysis to map axial identity and confirm vagal (Hoxb2–Hoxb4-positive) gut-innervating NCCs
 
-**Input data:** The source h5ad files are from the published De Haan & He datasets. The processed NC_AC object is saved as `NC_AC_E9E10.h5ad`.
 
 **Key Python dependencies:** `scanpy`, `harmonypy`, `numpy`, `pandas`, `matplotlib`
 
