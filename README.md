@@ -97,7 +97,7 @@ Raw sequencing and processed archives for the two arms of this project are hoste
 
 Download raw FASTQs / matrices from those accessions before running the E9E10 notebook or the E16 preprocessing and TREX pipelines.
 
-## Execution order
+## Processing order
 
 Scripts should be run in the following order to reproduce the full analysis:
 
