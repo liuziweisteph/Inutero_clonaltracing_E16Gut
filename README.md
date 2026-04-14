@@ -24,6 +24,11 @@ Code repository for single-cell transcriptome and clonal relations analysis of t
 │   └── E9E10_analysis.html           # Reanalysis of E9.5/E10.5 neural crest data (Scanpy/Python)
 ├── TREX/
 │   └── medium_dataset_exclusion_list.csv   # CloneID sequences passed to TREX --filter-cloneids (overrepresentation filter)
+├── Automatic_annotation/
+│   ├── seurat_findallmarkers.R       # Export Seurat FindAllMarkers results (E16 E2) in SCSA-compatible CSV
+│   ├── scanpy_findallmarkers.py      # Export Scanpy rank_genes_groups results (E9E10 NC_AC) in SCSA-compatible CSV
+│   ├── SCSA.py                       # SCSA cell-type annotation tool (Cao et al.); predicts cluster identity from marker genes
+│   └── Results/                      # SCSA output (top-5 cell-type predictions per cluster)
 ├── Helpers/
 │   ├── SoupXDoubletfinder.R          # Custom functions for SoupX correction, DoubletFinder, elbow plots
 │   └── helpers.R                     # Custom functions for Seurat object creation, QC, batch processing
@@ -295,6 +300,21 @@ Clonal coupling heatmaps in this manuscript follow the **lineage coupling** fram
 
 
 Clone the Bandler-et-al repository, create the **conda** environment from `**requirements.txt`** in **Lineage Coupling Analysis/** as described in [their README](https://github.com/mayer-lab/Bandler-et-al_lineage), then run the coupling script on the exported CSV. The upstream `**1_generate_input_for_lineage_coupling_analysis_*.R`** in that repository is an alternative way to build compatible inputs from a Seurat object; this project instead emits CSVs directly from annotated metadata.
+
+### Automatic cell-type annotation (`Automatic_annotation/`)
+
+The `Automatic_annotation/` folder contains scripts for **automated, reference-based cluster annotation** using [SCSA](https://github.com/bioinfo-ibms-pumc/SCSA) (Single Cell Subtype Annotation; Cao *et al.*). The workflow has two stages:
+
+1. **Marker gene export** — convert differential expression results into the CSV format expected by SCSA:
+
+| Script | Input | Method | Output |
+|--------|-------|--------|--------|
+| `seurat_findallmarkers.R` | E16 Seurat object (`.rds`) | Seurat `FindAllMarkers` (Wilcoxon, `group.by = "harmony_clusters"`) | `seurat_*.csv` |
+| `scanpy_findallmarkers.py` | E9E10 neural crest AnnData (`.h5ad`) | Scanpy `rank_genes_groups` (Wilcoxon, `groupby = "leiden_res_0.40"`) | `scanpy_*.csv` |
+
+2. **SCSA annotation** — `SCSA.py` reads the marker CSV, scores each cluster against the CellMarker database (Fisher-exact test + Z-score), and writes per-cluster cell-type predictions and optional GO enrichment results. Outputs include top-5 predictions per cluster saved to Excel (`Results/`).
+
+**Key Python dependencies:** `numpy`, `pandas`, `scipy`, `scanpy` (for the Scanpy export script), `openpyxl` (for Excel output).
 
 ### Running R Markdown notebooks
 

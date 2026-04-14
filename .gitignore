@@ -23,10 +23,15 @@ Clonal_analysis/TREX_output_*/molecules_corrected.txt
 *.rds
 *.h5ad
 
+# SCSA database and regenerable intermediates (Automatic_annotation/)
+Automatic_annotation/*.db
+Automatic_annotation/final/
+Automatic_annotation/go_terms_with_genes_combined.csv
+
 # Python
 __pycache__/
 .ipynb_checkpoints/
 
 # Editor / IDE
 .vscode/
-.Rproj.user/
+
