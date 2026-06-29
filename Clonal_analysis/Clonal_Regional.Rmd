@@ -622,7 +622,6 @@ pdf(file.path(fig_dir_regions, "ENS_E2_subtype_sharing_heatmap_subtype_allclones
 Heatmap(
   heatmap_matrix_ens,
   name = "Proportion",
-  col = col_fun,
   right_annotation = ra_ens,
   cluster_columns = FALSE,
   cluster_rows = TRUE,
