@@ -248,6 +248,17 @@ cross_germ_clone_ids
 ```
 
 ```{r,fig.height = 6, fig.width = 8, fig.align = "center"}
+clone_cols <- c(
+  "No CloneID" = "grey70",
+  "Singleton" = "grey70",
+  "Cross-germ clones" = "grey70",
+  "Region not shared at all" = "#56B4E9",
+  "Region shared by stomach, jej_ileum" = "#006D2C",
+  "Region shared by stomach, colon" = "#006D2C",
+  "Region shared by jej_ileum, colon" = "#006D2C",
+  "Region shared by stomach, jej_ile, colon" = "#D81B60"
+)
+
 clone_region_map_E2 <- E16_barcodes_E2@meta.data %>%
   group_by(clone_nr) %>%
   summarise(
@@ -299,11 +310,6 @@ E16_barcodes_E2@meta.data$shared_clone_category <- factor(
     "Region shared by jej_ileum, colon",
     "Region shared by stomach, jej_ile, colon"
   )
-)
-
-E16_barcodes_E2@meta.data$shared_clone_category <- factor(
-  E16_barcodes_E2@meta.data$shared_clone_category,
-  levels = names(clone_cols)
 )
 DimPlot(E16_barcodes_E2, group.by = "shared_clone_category", reduction = "umap.harmony", pt.size = 0.5, order = T, cols = clone_cols)  + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
 save_fig_regions("umap_E2_regional_sharedclones.pdf", width = 9, height = 6) # Fig 5E
