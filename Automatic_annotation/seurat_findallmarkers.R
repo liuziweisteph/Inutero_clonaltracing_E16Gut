@@ -1,8 +1,10 @@
+# Run from project root, or set working directory accordingly.
+# Exports harmony-cluster markers from the E2 Seurat object for SCSA input.
+
 library(Seurat)
 
-# Input and output files
-input_file <- "E16_barcodes_E2_202512.rds"
-output_file <- "seurat_E16_barcodes_E2_202512_harmony_clusters.csv"
+input_file <- "Data/E16_barcodes_E2.rds"
+output_file <- "Automatic_annotation/seurat_E16_barcodes_E2_harmony_clusters.csv"
 
 cat("Reading RDS file:", input_file, "\n")
 seurat_obj <- readRDS(input_file)
@@ -47,5 +49,4 @@ output_df <- data.frame(
 output_df <- output_df[order(output_df$cluster, output_df$p_val), ]
 write.csv(output_df, file = output_file, row.names = FALSE, quote = FALSE)
 cat("Done! Saved", nrow(output_df), "markers to", output_file, "\n")
-
 

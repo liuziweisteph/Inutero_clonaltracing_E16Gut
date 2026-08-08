@@ -5,6 +5,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath(".."))
 library(Seurat)
 options(Seurat.object.assay.version = "v5")
 library(ggplot2)
@@ -46,17 +47,17 @@ save_fig_regions <- function(name, width = 7, height = 5, device = grDevices::pd
 ```
 
 ```{r}
+E16_barcodes <- readRDS("Data/E16_barcodes_E1.rds")
+E16_barcodes_E2 <- readRDS("Data/E16_barcodes_E2.rds")
+```
+
+```{r}
 distinct11 <- c("#377EB8", "#F5B375", "#A3CB38", "#C73681", "#E41A1C", "#84817b", "#A65628", "#FF7F00", "#FFD92F", "#984EA3", "#4DAF4A")
-cell_types <- sort(unique(E16_barcodes$major_cell_type_2))
+cell_types <- sort(unique(c(E16_barcodes$major_cell_type_2, E16_barcodes_E2$major_cell_type_2)))
 color_map <- setNames(
   rep(distinct11, length.out = length(cell_types)),
   cell_types
 )
-```
-
-```{r}
-E16_barcodes <- readRDS("Data/E16_barcodes_E1.rds")
-E16_barcodes_E2 <- readRDS("Data/E16_barcodes_E2.rds")
 ```
 
 ```{r}

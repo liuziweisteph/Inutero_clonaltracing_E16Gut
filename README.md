@@ -10,16 +10,20 @@ Code repository for single-cell transcriptome and clonal relations analysis of t
 │   ├── Assessing_ambinetRNA.R        # Ambient RNA assessment (SoupX)
 │   ├── Expt1_Preprocessing.R         # E1: QC → doublet removal → merge → SCT → Harmony
 │   ├── Expt2_Preprocessing.R         # E2: SoupX → QC → doublet removal → merge → SCT → Harmony
+│   ├── Expt3_Preprocessing.R           # E3: SoupX → QC → doublet removal → merge → SCT → Harmony → label transfer from E1
 │   ├── Expt1_Processing.Rmd          # E1: annotation, markers, ENS sub-clustering
-│   └── Expt2_Processing.Rmd          # E2: annotation, markers, label transfer from E1
+│   ├── Expt2_Processing.Rmd          # E2: annotation, markers, label transfer from E1
+│   └── IntegratingE1E2E3.R           # E1 + E2 + E3 merged transcriptome (Harmony)
 ├── Clonal_analysis/
 │   ├── Barcode_E1_Clones.Rmd         # Clonal analysis — Experiment 1 (Fig. 3)
 │   ├── Barcode_E2_Clones.Rmd         # Clonal analysis — Experiment 2 (Fig. 4)
+│   ├── Barcode_E3_Clones.Rmd         # Clonal analysis — Experiment 3 (Fig. 6)
 │   ├── Clonal_Regional.Rmd           # Regional clonal sharing, ENS migration (Fig. 5)
 │   ├── E1E2_Comparison.Rmd           # Cross-experiment comparison (Supplementary)
 │   ├── Transcriptome_Regional.Rmd    # Merged E1 + E2 transcriptome integration (Supplementary)
 │   ├── TREX_output_E1/               # TREX outputs (clones.txt, clone_details.txt, umi_count_matrix.csv, log.txt, …)
-│   └── TREX_output_E2/               # TREX outputs for Experiment 2
+│   ├── TREX_output_E2/               # TREX outputs for Experiment 2
+│   └── TREX_output_E3/               # TREX outputs for Experiment 3
 ├── E9E10/
 │   └── E9E10_analysis.html           # Reanalysis of E9.5/E10.5 neural crest data (Scanpy/Python)
 ├── TREX/
@@ -66,11 +70,17 @@ Raw 10X counts — E16.5 gut (GEO: GSE325733)
 │   ▼
 │   Expt2_Processing.Rmd ─────────────── Data/E16_barcodes_E2.rds     (annotated + label transfer)
 │
+├─ Expt3_Preprocessing.R ──────────────── Data/E16_barcodes_E3.rds
+│                                         Data/cellids_E3.tsv
+│   ▼
+│   Barcode_E3_Clones.Rmd ────────────── Data/E16_barcodes_E3.rds (cell-type annotation + clonal metadata)
+│                                         Figures/Fig6/
+│
 ├─ TREX (run10x) ◄── BAM + cell barcode list + TREX/medium_dataset_exclusion_list.csv (--filter-cloneids)
 │       │            Per embryo: if merging regional BAMs, give each region unique cell-barcode IDs before samtools merge; then index merged BAM (see TREX section)
 │       │            Drops overrepresented cloneID sequences before graph / clone calling
 │       ▼
-│   TREX_output_E1/ & TREX_output_E2/  (clones.txt, clone_details.txt, …)
+│   TREX_output_E1/ & TREX_output_E2/ & TREX_output_E3/  (clones.txt, clone_details.txt, …)
 │
 ├─ Barcode_E1_Clones.Rmd ◄── E16_barcodes_E1.rds + TREX_output_E1/
 │       │
@@ -82,13 +92,23 @@ Raw 10X counts — E16.5 gut (GEO: GSE325733)
 │       ▼ writes Data/E16_barcodes_E2.rds, E16_barcodes_ENS_E2.rds, etc. (adds clone metadata)
 │       ▼ Data/E2_df_clonalanalysis_*.csv  → lineage coupling (Bandler *et al.* format)
 │
+├─ Barcode_E3_Clones.Rmd ◄── E16_barcodes_E3.rds + TREX_output_E3/
+│       │
+│       ▼ overwrites Data/E16_barcodes_E3.rds (adds clone metadata)
+│       ▼ Data/E3_df_clonalanalysis_*.csv  → lineage coupling (Bandler *et al.* format)
+│
 ├─ E1E2_Comparison.Rmd ◄──── E16_barcodes_E1.rds + E16_barcodes_E2.rds
 │
 ├─ Clonal_Regional.Rmd ◄──── E16_barcodes_E1.rds + E16_barcodes_E2.rds + E16_barcodes_ENS_E2.rds
 │
-└─ Transcriptome_Regional.Rmd ◄── E16_barcodes_E1.rds + E16_barcodes_E2.rds
-        │
-        ▼ Data/E16_barcodes_E1E2_merged.rds (joint Harmony integration)
+├─ Transcriptome_Regional.Rmd ◄── E16_barcodes_E1.rds + E16_barcodes_E2.rds
+│       │
+│       ▼ Data/E16_barcodes_E1E2_merged.rds (joint Harmony integration)
+│
+└─ IntegratingE1E2E3.R ◄── E16_barcodes_E1.rds + E16_barcodes_E2.rds + E16_barcodes_E3.rds
+        │                    (after Barcode_E1/E2/E3_Clones.Rmd)
+        ▼ Data/E16_barcodes_E1E2E3_merged.rds
+        ▼ Figures/Fig5/Merged_byregion_3datasets.pdf
 ```
 
 ## Raw data access
@@ -113,14 +133,17 @@ Scripts should be run in the following order to reproduce the full analysis:
 | 1    | `Assessing_ambinetRNA.R`     | R               | Quantify ambient RNA contamination                                                                                                                                           |
 | 2a   | `Expt1_Preprocessing.R`      | R               | E1 QC, doublet removal, SCTransform, Harmony                                                                                                                                 |
 | 2b   | `Expt2_Preprocessing.R`      | R               | E2 SoupX, QC, doublet removal, SCTransform, Harmony                                                                                                                          |
+| 2c   | `Expt3_Preprocessing.R`      | R               | E3 SoupX, QC, doublet removal, SCTransform, Harmony, label transfer from E1                                                                                                  |
 | 3a   | `Expt1_Processing.Rmd`       | R               | E1 cell-type annotation, DEG analysis, ENS sub-clustering                                                                                                                    |
 | 3b   | `Expt2_Processing.Rmd`       | R               | E2 cell-type annotation, label transfer from E1                                                                                                                              |
-| 3c   | TREX `run10x`                | —               | Per experiment: extract barcodes from BAM with `**--filter-cloneids TREX/medium_dataset_exclusion_list.csv**`; write `Clonal_analysis/TREX_output_E1/` and `TREX_output_E2/` |
+| 3c   | TREX `run10x`                | —               | Per experiment: extract barcodes from BAM with `**--filter-cloneids TREX/medium_dataset_exclusion_list.csv**`; write `Clonal_analysis/TREX_output_E1/`, `TREX_output_E2/`, and `TREX_output_E3/` |
 | 4a   | `Barcode_E1_Clones.Rmd`      | R               | E1 clonal integration (requires TREX output)                                                                                                                                 |
 | 4b   | `Barcode_E2_Clones.Rmd`      | R               | E2 clonal integration (requires TREX output)                                                                                                                                 |
+| 4c   | `Barcode_E3_Clones.Rmd`      | R               | E3 cell-type annotation, manual cleanup, clonal integration (requires TREX output); cross-experiment comparison with E1/E2 (requires annotated E1/E2 with `major_cell_type_3`) |
 | 6a   | `E1E2_Comparison.Rmd`        | R               | Cross-experiment clone comparison                                                                                                                                            |
 | 6b   | `Clonal_Regional.Rmd`        | R               | Regional clonal dispersion, ENS migration                                                                                                                                    |
 | 6c   | `Transcriptome_Regional.Rmd` | R               | Merged E1 + E2 transcriptome                                                                                                                                                 |
+| 6d   | `IntegratingE1E2E3.R`        | R               | Merged E1 + E2 + E3 transcriptome (requires annotated clonal objects from steps 4a–4c); writes `Data/E16_barcodes_E1E2E3_merged.rds`                                         |
 
 
 ## Setup and reproducibility
@@ -131,7 +154,7 @@ Scripts should be run in the following order to reproduce the full analysis:
 - **Bioconductor 3.21**
 - **Python 3** with `scanpy`, `harmonypy`, `numpy`, `pandas`, `matplotlib` (for `E9E10/E9E10_analysis`)
 - **Python** with `leidenalg` (accessed via `reticulate`; required for Leiden clustering in R scripts)
-- **TREX** ([Ratz *et al.](https://github.com/frisen-lab/TREX)*) — run separately on each experiment’s merged 10x BAM to populate `Clonal_analysis/TREX_output_E1/` and `TREX_output_E2/`. Pass `**TREX/medium_dataset_exclusion_list.csv`** to TREX `**--filter-cloneids**` so highly overrepresented cloneID sequences are ignored before clone calling (see `TREX_output_*/log.txt` for the exact command).
+- **TREX** ([Ratz *et al.](https://github.com/frisen-lab/TREX)*) — run separately on each experiment’s merged 10x BAM to populate `Clonal_analysis/TREX_output_E1/`, `TREX_output_E2/`, and `TREX_output_E3/`. Pass `**TREX/medium_dataset_exclusion_list.csv`** to TREX `**--filter-cloneids**` so highly overrepresented cloneID sequences are ignored before clone calling (see `TREX_output_*/log.txt` for the exact command).
 - **Lineage coupling (optional)** — Python environment for [Bandler *et al.* lineage coupling](https://github.com/mayer-lab/Bandler-et-al_lineage) (`Lineage Coupling Analysis/`); see below.
 
 ### Installation
@@ -188,9 +211,10 @@ To skip E16 preprocessing and jump straight to analysis, download the two base S
 | --------------------- | ------------------------------------------------------------- |
 | `E16_barcodes_E1.rds` | Experiment 1 — merged, QC'd, Harmony-integrated Seurat object |
 | `E16_barcodes_E2.rds` | Experiment 2 — merged, QC'd, Harmony-integrated Seurat object |
+| `E16_barcodes_E3.rds` | Experiment 3 — merged, QC'd, Harmony-integrated Seurat object (stomach, jejunum–ileum, colon) |
 
 
-These are the starting inputs for `Expt1_Processing.Rmd` and `Expt2_Processing.Rmd`, respectively. All downstream scripts consume the annotated objects produced by those two notebooks.
+These are the starting inputs for `Expt1_Processing.Rmd`, `Expt2_Processing.Rmd`, and `Expt3_Preprocessing.R`, respectively. `Barcode_E3_Clones.Rmd` reads the preprocessed E3 object and performs cell-type annotation plus clonal analysis. All downstream scripts consume the annotated objects produced by those notebooks.
 
 If you wish to **re-run preprocessing from raw counts**, the Cell Ranger output directories are also available from GEO. The preprocessing scripts expect them at a local path set via:
 
@@ -229,6 +253,7 @@ Gut regions were processed as **separate Cell Ranger runs** per embryo, so each 
 | ---------- | ----------------------------- | ---------------------------------------------------------------------------------- |
 | **E1**     | `e16_s1`, `e16_i1`            | `e16_s1_` + 16 bp barcode and `e16_i1_` + 16 bp barcode                            |
 | **E2**     | `e16_s1`, `e16_ji1`, `e16_c1` | `e16_s1_`, `e16_ji1_`, or `e16_c1_`, each followed by the 16-character 10x barcode |
+| **E3**     | `e16_s1`, `e16_ji1`, `e16_c1` | Same three-region layout as E2 (stomach, jejunum–ileum, colon)                     |
 
 
 
@@ -236,6 +261,7 @@ Gut regions were processed as **separate Cell Ranger runs** per embryo, so each 
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `Data/cellids_E1.tsv` | One barcode per line (tab-separated index and full cell ID); only **`e16_s1_`** and **`e16_i1_`** prefixes (Experiment 1) |
 | `Data/cellids_E2.tsv` | Same layout for Experiment 2: **`e16_s1_`**, **`e16_ji1_`**, and **`e16_c1_`** |
+| `Data/cellids_E3.tsv` | Same layout for Experiment 3: **`e16_s1_`**, **`e16_ji1_`**, and **`e16_c1_`** |
 
 
 **Cell identity in the merged BAM must map to these files:** the **CB** strings in the BAM after prefixing must be the **same** strings as column 2 of `cellids_E1.tsv` / `cellids_E2.tsv` (no extra characters). To add a library prefix inside the BAM (here **`e16_s1_`** for one regional library), stream the alignments through **`awk`** and write a new BAM; repeat per region with the matching prefix (`e16_i1_`, `e16_ji1_`, `e16_c1_`) before **`samtools merge`**.
@@ -274,7 +300,7 @@ Install the result as **`outs/possorted_genome_bam.bam`** (and **`outs/possorted
 
 ### TREX cloneID filtering (`TREX/`)
 
-TREX is run on the merged 10x **`possorted_genome_bam.bam`** with a per-experiment cell-barcode list (see `TREX_output_*/log.txt` for the exact paths used on the cluster). To reduce bias from **overrepresented cloneID sequences** (e.g. dominant or artefactual barcodes), the same **`--filter-cloneids`** file is supplied for both experiments:
+TREX is run on the merged 10x **`possorted_genome_bam.bam`** with a per-experiment cell-barcode list (see `TREX_output_*/log.txt` for the exact paths used on the cluster). To reduce bias from **overrepresented cloneID sequences** (e.g. dominant or artefactual barcodes), the same **`--filter-cloneids`** file is supplied for all three experiments:
 
 
 | File                                     | Role                                                                                                              |
@@ -282,7 +308,7 @@ TREX is run on the merged 10x **`possorted_genome_bam.bam`** with a per-experime
 | `TREX/medium_dataset_exclusion_list.csv` | One cloneID sequence per line; TREX **ignores** these IDs during analysis so they do not inflate clone statistics |
 
 
-After filtering, TREX writes **`clones.txt`**, **`clone_details.txt`**, **`cells_filtered.txt`**, **`umi_count_matrix.csv`**, and related files under `Clonal_analysis/TREX_output_E1/` and `TREX_output_E2/`. The clonal R Markdown notebooks merge these calls into the Seurat objects.
+After filtering, TREX writes **`clones.txt`**, **`clone_details.txt`**, **`cells_filtered.txt`**, **`umi_count_matrix.csv`**, and related files under `Clonal_analysis/TREX_output_E1/`, `TREX_output_E2/`, and `TREX_output_E3/`. The clonal R Markdown notebooks merge these calls into the Seurat objects.
 
 ### Lineage coupling analysis (Bandler *et al.*)
 
@@ -297,6 +323,8 @@ Clonal coupling heatmaps in this manuscript follow the **lineage coupling** fram
 | `E1_df_clonalanalysis_subtypes_meso.csv`              | E1 — mesodermal-only clones, subtype `ident` | Fig. 3G           |
 | `E2_df_clonalanalysis_subtypes_nonepiblast.csv`       | E2 — subtypes, non-epiblast                  | Fig. 4H           |         |
 | `E2_df_clonalanalysis_subtypes_meso.csv`              | E2 — mesodermal-label subset, subtypes       | Fig. 4I           |
+| `E3_df_clonalanalysis_majorcelltypes.csv`             | E3 — major cell types                        | Fig. 6            |
+| `E3_df_clonalanalysis_majorcelltypes_nonepiblast.csv` | E3 — major cell types, non-epiblast          | Fig. 6            |
 
 
 Clone the Bandler-et-al repository, create the **conda** environment from `**requirements.txt`** in **Lineage Coupling Analysis/** as described in [their README](https://github.com/mayer-lab/Bandler-et-al_lineage), then run the coupling script on the exported CSV. The upstream `**1_generate_input_for_lineage_coupling_analysis_*.R`** in that repository is an alternative way to build compatible inputs from a Seurat object; this project instead emits CSVs directly from annotated metadata.
@@ -309,8 +337,10 @@ The `Automatic_annotation/` folder contains scripts for **automated, reference-b
 
 | Script | Input | Method | Output |
 |--------|-------|--------|--------|
-| `seurat_findallmarkers.R` | E16 Seurat object (`.rds`) | Seurat `FindAllMarkers` (Wilcoxon, `group.by = "harmony_clusters"`) | `seurat_*.csv` |
-| `scanpy_findallmarkers.py` | E9E10 neural crest AnnData (`.h5ad`) | Scanpy `rank_genes_groups` (Wilcoxon, `groupby = "leiden_res_0.40"`) | `scanpy_*.csv` |
+| `seurat_findallmarkers.R` | `Data/E16_barcodes_E2.rds` | Seurat `FindAllMarkers` (Wilcoxon, `group.by = "harmony_clusters"`) | `Automatic_annotation/seurat_E16_barcodes_E2_harmony_clusters.csv` |
+| `scanpy_findallmarkers.py` | `E9E10/E9E10NC.AC_neural_and_epi.h5ad` | Scanpy `rank_genes_groups` (Wilcoxon, `groupby = "leiden_res_0.40"`) | `Automatic_annotation/scanpy_E9E10NC.AC_harmony_clusters.csv` |
+
+Run both export scripts from the **project root**.
 
 2. **SCSA annotation** — `SCSA.py` reads the marker CSV, scores each cluster against the CellMarker database (Fisher-exact test + Z-score), and writes per-cluster cell-type predictions and optional GO enrichment results. Outputs include top-5 predictions per cluster saved to Excel (`Results/`).
 
@@ -330,7 +360,8 @@ All `.Rmd` files include `knitr::opts_knit$set(root.dir = normalizePath(".."))` 
 | Fig. 2                             | `Expt1_Processing.Rmd` → `Figures/Fig2/`                                                                                                               |
 | Fig. 3                             | `Barcode_E1_Clones.Rmd` → `Figures/Fig3/`                                                                                                              |
 | Fig. 4                             | `Expt2_Processing.Rmd`, `Barcode_E2_Clones.Rmd` → `Figures/Fig4/`                                                                                      |
-| Fig. 5                             | `Clonal_Regional.Rmd`, `E1E2_Comparison.Rmd`, `Transcriptome_Regional.Rmd` → `Figures/Fig5/`                                                           |
+| Fig. 5                             | `Clonal_Regional.Rmd`, `E1E2_Comparison.Rmd`, `Transcriptome_Regional.Rmd`, `IntegratingE1E2E3.R` → `Figures/Fig5/`                                     |
+| Fig. 6                             | `Expt3_Preprocessing.R`, `Barcode_E3_Clones.Rmd` → `Figures/Fig6/`                                                                                      |
 | Fig. 3F–G, 4H–I (lineage coupling) | Exported `Data/E1_df_clonalanalysis_*.csv`, `E2_df_clonalanalysis_*.csv` + [Bandler-et-al_lineage](https://github.com/mayer-lab/Bandler-et-al_lineage) |
 
 
@@ -341,8 +372,10 @@ Across all scripts, the main Seurat objects follow a consistent naming scheme:
 
 | Variable                  | Content                                        |
 | ------------------------- | ---------------------------------------------- |
-| `E16_seurat_E1`           | Experiment 1 — annotated E16 gut Seurat object |
-| `E16_seurat_E2`           | Experiment 2 — annotated E16 gut Seurat object |
+| `E16_barcodes_E1` / `E16_seurat_E1` | Experiment 1 — annotated E16 gut Seurat object |
+| `E16_barcodes_E2` / `E16_seurat_E2` | Experiment 2 — annotated E16 gut Seurat object |
+| `E16_barcodes_E3`                   | Experiment 3 — annotated E16 gut Seurat object (three gut regions) |
+| `Barcodes_combined`                 | E1 + E2 + E3 merged object from `IntegratingE1E2E3.R`             |
 | `E16_seurat_E1_ENSsubset` | E1 ENS-only subset (re-clustered)              |
 
 

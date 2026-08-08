@@ -1,0 +1,1903 @@
+---
+title: "E16_clonal_information"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+library(Seurat)
+options(Seurat.object.assay.version = "v5")
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(patchwork)
+library(circlize)
+library(UpSetR)
+library(tidyr)
+library(purrr)
+library(writexl)
+library(ComplexHeatmap)
+library(scCustomize)
+library(ggalluvial)
+library(scales)
+library(tibble)
+```
+
+```{r}
+theme_set(
+  theme_classic(base_family = "Arial") +
+    theme(
+      plot.title = element_text(size = 10, face = "bold", hjust = 0.5),
+      legend.text = element_text(size = 8),
+      legend.title = element_text(size = 8),
+      axis.title = element_text(size = 8),
+      axis.text = element_text(size = 8)
+    )
+)
+```
+
+```{r}
+fig_dir_E3 <- "Figures/Fig6/"
+
+save_fig_E3 <- function(name, width = 7, height = 5, device = grDevices::pdf, bg = "white", dpi = 300) {
+  # Ensure directory exists
+  if (!dir.exists(fig_dir_E3)) dir.create(fig_dir_E3, recursive = TRUE)
+
+  ggsave(
+    filename = file.path(fig_dir_E3, name),
+    width = width,
+    height = height,
+    bg = bg,
+    dpi = dpi,
+    device = device
+  )
+}
+
+save_chordDiagram_E3 <- function(link_counts, cell_colors,
+                                 file_name, width = 10, height = 10, file_type = "pdf") {
+  if (!dir.exists(fig_dir_E3)) dir.create(fig_dir_E3, recursive = TRUE)
+  file_path <- file.path(fig_dir_E3, file_name)
+  circos.clear()
+
+  if (file_type == "pdf") {
+    grDevices::pdf(file_path, width = width, height = height)
+  } else if (file_type == "png") {
+    grDevices::png(file_path, width = width, height = height, units = "in", res = 300)
+  } else {
+    stop("file_type must be 'pdf' or 'png'")
+  }
+
+  circlize::chordDiagram(
+    x = link_counts,
+    grid.col = cell_colors,
+    transparency = 0.3,
+    directional = FALSE,
+    big.gap = 30
+  )
+  grDevices::dev.off()
+  message("Chord diagram saved to: ", normalizePath(file_path))
+}
+```
+
+```{r}
+distinct5 <- c("#377EB8", "#E41A1C", "#FF7F00", "#FFD92F", "#984EA3")
+distinct11 <- c("#377EB8", "#E41A1C", "#FF7F00", "#FFD92F", "#f5b7b1", "#c39bd3", "#d35400", "#FDA7DF","#8e44ff", "#6c3483", "#33d9b2")
+distinct9 <- c("#377EB8", "#E41A1C", "#FF7F00", "#FFD92F", "#f5b7b1", "#c39bd3", "#d35400","#8e44ff", "#33d9b2")
+distinct3<- c("#F1C40F", "#F8766D","#00BFC4")
+distinct8 <- distinct5  # major_cell_type palette (5 classes)
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+E16_barcodes_E3 <- readRDS("Data/E16_barcodes_E3.rds")
+Idents(E16_barcodes_E3)<- E16_barcodes_E3$harmony_clusters
+E16_barcodes_E3[["umap.harmony"]]@cell.embeddings[,1] <- -E16_barcodes_E3[["umap.harmony"]]@cell.embeddings[,1]
+E16_barcodes_E3[["umap.harmony"]]@cell.embeddings[,2] <- -E16_barcodes_E3[["umap.harmony"]]@cell.embeddings[,2]
+DimPlot(E16_barcodes_E3, reduction = "umap.harmony",label=T)
+save_fig_E3("umap_18harmonyclusters_E3.pdf") 
+```
+
+```{r,fig.height = 6, fig.width = 8,fig.align = "center"}
+E16_barcodes_E3$major_cell_type <- E16_barcodes_E3$harmony_clusters
+E16_barcodes_E3$major_cell_type  <- dplyr::recode(E16_barcodes_E3$major_cell_type,
+  "1" = "Simple Epithelial",
+  "2" = "ENS",
+  "3" = "ENS",
+  "4" = "ENS", 
+  "5" = "ENS",
+  "6" = "ENS", 
+  "7" = "ENS",
+  "8" = "ENS", 
+  "9" = "ENS",
+  "10" = "ENS",
+  "11" = "ENS", 
+  "12" = "ENS",
+  "13" = "Fibroblast-like",
+  "14" = "Simple Epithelial",
+  "15" = "SCP",
+  "16" = "Foregut Basal", #stomach specific
+  "17" = "Smooth muscle-like",
+  "18" = "Simple Epithelial"
+)
+E16_barcodes_levels <- c("Fibroblast-like", "Smooth muscle-like",  "Simple Epithelial", "Foregut Basal", "ENS")
+E16_barcodes_E3$major_cell_type <- factor(x = E16_barcodes_E3$major_cell_type, levels = E16_barcodes_levels)
+DimPlot(E16_barcodes_E3, reduction = "umap.harmony", label = F, group.by = "major_cell_type", cols = distinct5) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig_E3("umap_major_cell_types_E3.pdf") # Supplementary
+```
+
+```{r,fig.height = 6, fig.width = 8, fig.align = "center"}
+E16_barcodes_E3$assigned_cell_type <- E16_barcodes_E3$harmony_clusters
+E16_barcodes_E3$assigned_cell_type  <- dplyr::recode(E16_barcodes_E3$assigned_cell_type,
+  "1" = "Simple Epithelial",
+  "2" = "ENS Progenitor",
+  "3" = "ENS Progenitor",
+  "4" = "ENS Branch Bb", 
+  "5" = "ENS Neuroblast",
+  "6" = "ENS Branch Ba", 
+  "7" = "ENS Branch A",
+  "8" = "ENS Progenitor", 
+  "9" = "ENS Branch A",
+  "10" = "ENS Progenitor",
+  "11" = "ENC12", 
+  "12" = "ENS Progenitor",
+  "13" = "Fibroblast-like",
+  "14" = "Simple Epithelial",
+  "15" = "SCP",
+  "16" = "Foregut Basal", #stomach specific
+  "17" = "Smooth muscle-like",
+  "18" = "Simple Epithelial"
+)
+E16_barcodes_levels_assigned <- c("Fibroblast-like", "Smooth muscle-like",  "Simple Epithelial", "Foregut Basal", "ENS Progenitor",  "ENS Neuroblast",  "ENS Branch A","ENC12","ENS Branch Ba", "ENS Branch Bb", "SCP")
+E16_barcodes_E3$assigned_cell_type <- factor(x = E16_barcodes_E3$assigned_cell_type, levels = E16_barcodes_levels_assigned)
+DimPlot(E16_barcodes_E3, reduction = "umap.harmony", label = F, group.by = "assigned_cell_type", cols = distinct11) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig_E3("umap_assigned_cell_types_E3.pdf") # Supplementary
+```
+
+```{r,fig.height = 6, fig.width = 8, fig.align = "center"}
+E16_barcodes_E3$major_cell_type_2 <- E16_barcodes_E3$harmony_clusters
+E16_barcodes_E3$major_cell_type_2  <- dplyr::recode(E16_barcodes_E3$major_cell_type_2,
+  "1" = "Simple Epithelial",
+  "2" = "ENS Progenitor",
+  "3" = "ENS Progenitor",
+  "4" = "ENS Branch B", 
+  "5" = "ENS Neuroblast",
+  "6" = "ENS Branch B", 
+  "7" = "ENS Branch A",
+  "8" = "ENS Progenitor", 
+  "9" = "ENS Branch A",
+  "10" = "ENS Progenitor",
+  "11" = "ENS Branch A", 
+  "12" = "ENS Progenitor",
+  "13" = "Fibroblast-like",
+  "14" = "Simple Epithelial",
+  "15" = "SCP",
+  "16" = "Foregut Basal", #stomach specific
+  "17" = "Smooth muscle-like",
+  "18" = "Simple Epithelial"
+)
+E16_barcodes_levels_2 <- c("Fibroblast-like", "Smooth muscle-like",  "Simple Epithelial", "Foregut Basal", "ENS Progenitor", "ENS Neuroblast", "ENS Branch A","ENS Branch B", "SCP")
+E16_barcodes_E3$major_cell_type_2 <- factor(x = E16_barcodes_E3$major_cell_type_2, levels = E16_barcodes_levels_2)
+DimPlot(E16_barcodes_E3, reduction = "umap.harmony", label = F, group.by = "major_cell_type_2", cols = distinct9) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig_E3("umap_major_cell_types2_E3.pdf") # Supplementary
+```
+
+```{r,fig.height = 8, fig.width = 10, fig.align = "center"}
+E16_barcodes_E3$major_cell_type_3 <- E16_barcodes_E3$harmony_clusters
+E16_barcodes_E3$major_cell_type_3 <- dplyr::recode(E16_barcodes_E3$harmony_clusters,
+                                                   "1"="Endodermal",
+                                                 "2"="Neural Crest",
+                                                 "3"="Neural Crest",
+                                                 "4"="Neural Crest",
+                                                 "5"="Neural Crest",
+                                                 "6"="Neural Crest",
+                                                 "7"="Neural Crest",
+                                                 "8"="Neural Crest",
+                                                 "9"="Neural Crest",
+                                                 "10"="Neural Crest",
+                                                 "11"="Neural Crest",
+                                                 "12"="Neural Crest",
+                                                 "13"="Mesodermal",
+                                                 "14"="Endodermal",
+                                                 "15"="Neural Crest",
+                                                 "16"="Endodermal",
+                                                 "17"="Mesodermal",
+                                                 "18"="Endodermal"
+                                                 )
+
+E16_barcodes_levels_majortypes_3 <- c('Mesodermal','Endodermal','Neural Crest')
+E16_barcodes_E3$major_cell_type_3 <- factor(x =E16_barcodes_E3$major_cell_type_3, levels = E16_barcodes_levels_majortypes_3)
+DimPlot(E16_barcodes_E3,reduction = 'umap.harmony', label = F,repel = T, group.by = 'major_cell_type_3') + ggtitle(NULL)+ xlab("UMAP1") +ylab("UMAP2")
+save_fig_E3("umap_3germlayers.pdf")
+```
+
+```{r}
+DimPlot(E16_barcodes_E3,reduction = 'umap.harmony', label = F, group.by = 'sample',cols = distinct3, pt.size=0.1) + ggtitle(NULL)+ xlab("UMAP1") +ylab("UMAP2")
+save_fig_E3("umap_sample_E3.pdf", width = 7.5, height = 6)
+```
+
+```{r}
+# Create a pie graph
+sample_counts_E3 <- table(E16_barcodes_E3$sample)
+pdf(file.path(fig_dir_E3, "pie_sample_E3.pdf"), width = 8, height = 6)
+pie(sample_counts_E3,  main = "Sample Distribution of E16 Barcodes",
+  col=c("#F1C40F", "#F8766D","#00BFC4"),labels = NA
+)
+dev.off() # Supplementary
+```
+
+```{r,fig.height = 10, fig.width = 10, fig.align = "center"}
+Idents(E16_barcodes_E3) <- E16_barcodes_E3$major_cell_type_3
+umap_df <- Embeddings(E16_barcodes_E3, "umap.harmony") %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("cell_id")
+
+# Add cluster info
+umap_df <- umap_df %>%
+  mutate(cluster = Idents(E16_barcodes_E3)[cell_id])
+
+cell_ids_in_cluster <- WhichCells(E16_barcodes_E3, idents = "Neural Crest")
+
+FeaturePlot(
+  E16_barcodes_E3,
+  features = c('Sox10','Phox2b','Etv1','Ndufa4l2','Ntng1','Bnc2'),
+  reduction = "umap.harmony",
+  cells = cell_ids_in_cluster,
+  order = TRUE,
+  pt.size = 0.5
+)
+save_fig_E3("E16_barcodes_E3_NCsubset.pdf", width = 10, height = 10)
+```
+
+```{r,fig.height = 10, fig.width = 8, fig.align = "center"}
+FeaturePlot(
+  E16_barcodes_E3,
+  features = c('Sox10','Phox2b','Etv1','Ndufa4l2','Ntng1','Bnc2'),
+  reduction = "umap.harmony",
+  order = TRUE,
+  pt.size = 0.2
+)
+save_fig_E3("E16_barcodes_E3_Featureplots_ENSmarkers.pdf", width = 8, height = 10)
+```
+
+```{r}
+Cluster_Highlight_Plot(
+  seurat_object    = E16_barcodes_E3,
+  cluster_name     = 'Neural Crest',
+  highlight_color  = "gold",
+  background_color = "lightgray",
+  pt.size          = 0.5,
+  reduction        = "umap.harmony"
+) +
+  ggplot2::geom_vline(xintercept = c( -11, 6.5), linetype = "dashed", color = "black") +
+  ggplot2::geom_hline(yintercept = c(-5, 6), linetype = "dashed", color = "black")
+```
+
+```{r}
+umap_coords <- Embeddings(E16_barcodes_E3, reduction = "umap.harmony")
+cell_clusters <- Idents(E16_barcodes_E3)
+umap_coords_cluster1 <- umap_coords[cell_clusters == "Neural Crest", ]
+
+x_min <- -11
+x_max <- 6.5
+y_min <- -5
+y_max <- 6
+
+# Find cells inside the box (within cluster 1 only)
+cells_in_box_cluster1 <- rownames(umap_coords_cluster1[
+  umap_coords_cluster1[, 1] >= x_min &
+  umap_coords_cluster1[, 1] <= x_max &
+  umap_coords_cluster1[, 2] >= y_min &
+  umap_coords_cluster1[, 2] <= y_max, 
+])
+
+# Find cells outside the box (within cluster 1)
+cells_outside_box_cluster1 <- setdiff(rownames(umap_coords_cluster1), cells_in_box_cluster1)
+length(cells_outside_box_cluster1) #50 cells
+```
+
+```{r}
+cells_outside_box_cluster1 <- as.character(cells_outside_box_cluster1)
+#Cleanup
+E16_barcodes_subset <- subset(E16_barcodes_E3, cells = cells_outside_box_cluster1, invert = TRUE)
+```
+
+```{r}
+Cluster_Highlight_Plot(
+  seurat_object    = E16_barcodes_subset,
+  cluster_name     = 'Neural Crest',
+  highlight_color  = "gold",
+  background_color = "lightgray",
+  pt.size          = 0.5,
+  reduction        = "umap.harmony"
+) +
+  ggplot2::geom_vline(xintercept = c( 5, 7), linetype = "dashed", color = "black") +
+  ggplot2::geom_hline(yintercept = c(-5, -2), linetype = "dashed", color = "black")
+```
+
+```{r}
+umap_coords_1 <- Embeddings(E16_barcodes_subset, reduction = "umap.harmony")
+cell_clusters <- Idents(E16_barcodes_subset)
+umap_coords_cluster2 <- umap_coords_1[cell_clusters == "Neural Crest", ]
+
+x_min <- 5
+x_max <- 7
+y_min <- -5
+y_max <- -2
+
+# Find cells inside the box (within cluster 2 only)
+cells_in_box_all <- rownames(umap_coords_cluster2[
+    umap_coords_cluster2[, 1] >= x_min &
+    umap_coords_cluster2[, 1] <= x_max &
+    umap_coords_cluster2[, 2] >= y_min &
+    umap_coords_cluster2[, 2] <= y_max,
+  ,
+  drop = FALSE
+])
+
+# Find cells outside the box (within cluster 1)
+length(cells_in_box_all) #1 cell
+```
+
+```{r}
+cells_in_box_all <- as.character(cells_in_box_all)
+#Cleanup
+E16_barcodes_subset_1 <- subset(E16_barcodes_subset, cells = cells_in_box_all, invert = TRUE)
+```
+
+```{r}
+Cluster_Highlight_Plot(
+  seurat_object    = E16_barcodes_subset_1,
+  cluster_name     = 'Mesodermal',
+  highlight_color  = "gold",
+  background_color = "lightgray",
+  pt.size          = 0.5,
+  reduction        = "umap.harmony"
+) + ggplot2::geom_hline(yintercept = c(-7), linetype = "dashed", color = "black")
+```
+```{r}
+umap_coords_2 <- Embeddings(E16_barcodes_subset_1, reduction = "umap.harmony")
+cell_clusters <- Idents(E16_barcodes_subset_1)
+y_cutoff <- -7
+
+mesodermal_cells_above_y <- rownames(umap_coords_2[
+  cell_clusters == "Mesodermal" &
+    umap_coords_2[, 2] >= y_cutoff,
+  ,
+  drop = FALSE
+])
+
+length(mesodermal_cells_above_y) #26 cells
+```
+
+```{r}
+mesodermal_cells_above_y <- as.character(mesodermal_cells_above_y)
+#Cleanup
+E16_barcodes_subset_2 <- subset(E16_barcodes_subset_1, cells = mesodermal_cells_above_y, invert = TRUE)
+```
+
+```{r}
+Cluster_Highlight_Plot(
+  seurat_object    = E16_barcodes_subset_2,
+  cluster_name     = 'Endodermal',
+  highlight_color  = "gold",
+  background_color = "lightgray",
+  pt.size          = 0.5,
+  reduction        = "umap.harmony"
+) + ggplot2::geom_hline(yintercept = c(-7), linetype = "dashed", color = "black")
+```
+```{r}
+umap_coords_3 <- Embeddings(E16_barcodes_subset_2, reduction = "umap.harmony")
+cell_clusters <- Idents(E16_barcodes_subset_2)
+y_cutoff <- -7
+
+endodermal_cells_below_y <- rownames(umap_coords_3[
+  cell_clusters == "Endodermal" &
+    umap_coords_3[, 2] <= y_cutoff,
+  ,
+  drop = FALSE
+])
+
+length(endodermal_cells_below_y) #7 cells
+```
+
+```{r}
+endodermal_cells_below_y <- as.character(endodermal_cells_below_y)
+#Cleanup
+E16_barcodes_subset_3 <- subset(E16_barcodes_subset_2, cells = endodermal_cells_below_y, invert = TRUE)
+```
+
+```{r}
+Cluster_Highlight_Plot(
+  seurat_object    = E16_barcodes_subset_3,
+  cluster_name     = 'Endodermal',
+  highlight_color  = "gold",
+  background_color = "lightgray",
+  pt.size          = 0.5,
+  reduction        = "umap.harmony"
+) + ggplot2::geom_vline(xintercept = c( 7), linetype = "dashed", color = "black") +
+  ggplot2::geom_hline(yintercept = c(-4.5, 5), linetype = "dashed", color = "black")
+```
+
+```{r}
+umap_coords_4 <- Embeddings(E16_barcodes_subset_3, reduction = "umap.harmony")
+cell_clusters <- Idents(E16_barcodes_subset_3)
+
+endodermal_cells_above_y <- rownames(umap_coords_4[
+     cell_clusters == "Endodermal" &
+    umap_coords_4[, 1] <= 7 &
+    umap_coords_4[, 2] >= -4.5 &
+    umap_coords_4[, 2] <= 5,
+  ,
+  drop = FALSE
+])
+
+length(endodermal_cells_above_y) #41 cells
+```
+
+```{r}
+endodermal_cells_above_y <- as.character(endodermal_cells_above_y)
+#Cleanup
+E16_barcodes_subset_4 <- subset(E16_barcodes_subset_3, cells = endodermal_cells_above_y, invert = TRUE)
+```
+
+```{r}
+Cluster_Highlight_Plot(
+  seurat_object    = E16_barcodes_subset_4,
+  cluster_name     = 'Endodermal',
+  highlight_color  = "gold",
+  background_color = "lightgray",
+  pt.size          = 0.5,
+  reduction        = "umap.harmony"
+) 
+```
+
+```{r}
+saveRDS(object = E16_barcodes_subset_4, "Data/E16_barcodes_E3.rds")
+E16_barcodes_E3 <- E16_barcodes_subset_4 
+```
+
+```{r}
+E1 <- readRDS("Data/E16_barcodes_E1.rds")
+E2 <- readRDS("Data/E16_barcodes_E2.rds")
+if (!"major_cell_type_3" %in% colnames(E1@meta.data) || !"major_cell_type_3" %in% colnames(E2@meta.data)) {
+  stop(
+    "E1/E2 objects lack 'major_cell_type_3'. Run Expt1_Processing.Rmd and ",
+    "Expt2_Processing.Rmd first (or use annotated objects from GEO)."
+  )
+}
+
+#Regardless of CloneID or not
+prop_E16_barcodes_E1 <- E1@meta.data %>%
+  as.data.frame() %>%
+  dplyr::count(major_cell_type_3) %>%
+  dplyr::mutate(prop = n / sum(n))
+
+prop_E16_barcodes_E2 <- E2@meta.data %>%
+  as.data.frame() %>%
+  dplyr::count(major_cell_type_3) %>%
+  dplyr::mutate(prop = n / sum(n))
+
+prop_E16_barcodes_E3 <- E16_barcodes_E3@meta.data %>%
+  as.data.frame() %>%
+  dplyr::count(major_cell_type_3) %>%
+  dplyr::mutate(prop = n / sum(n))
+
+
+prop_E16_barcodes_E1$dataset <- "Experiment 1"
+prop_E16_barcodes_E2$dataset <- "Experiment 2"
+prop_E16_barcodes_E3$dataset <- "Experiment 3"
+comp <- bind_rows(prop_E16_barcodes_E1, prop_E16_barcodes_E2,prop_E16_barcodes_E3)
+celltype_order <- unique(comp$major_cell_type_3)
+
+comp$major_cell_type_3 <- factor(
+  comp$major_cell_type_3,
+  levels = celltype_order
+)
+
+comp$dataset <- factor(
+  comp$dataset,
+  levels = c("Experiment 1", "Experiment 2", "Experiment 3")
+)
+
+germ_layer_cols <- c(
+  "Mesodermal" = "#FFD700",
+  "Neural Crest" = "#6a0dad",
+  "Endodermal" = "#FF69B4"
+)
+
+ggplot(comp, aes(x = dataset, y = prop, fill = major_cell_type_3)) +
+  geom_bar(stat = "identity", width = 0.65, color = "black") +
+  scale_y_continuous(
+    labels = scales::percent,
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.12),
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(values = germ_layer_cols) +
+  labs(y = "Proportion of cells", x = NULL, fill = NULL) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 12),
+    axis.title.y = element_text(size = 13),
+    legend.text = element_text(size = 10)
+  )
+```
+
+```{r,fig.height = 4, fig.width = 5, fig.align = "center"}
+alluvial_df_fixed <- comp %>%
+  select(major_cell_type_3, dataset, prop) %>%
+  pivot_wider(
+    names_from = dataset,
+    values_from = prop,
+    values_fill = 0
+  )
+
+alluvial_long <- alluvial_df_fixed %>%
+  pivot_longer(
+    cols = c("Experiment 1", "Experiment 2","Experiment 3"),
+    names_to = "dataset",
+    values_to = "value"
+  )
+
+cols_links <- c(
+  "Mesodermal" = "#FFD700",  
+  "Neural Crest" = "#6a0dad",  
+  "Endodermal" = "#FF69B4"   
+)
+
+ggplot(
+  alluvial_long,
+  aes(
+    x = dataset,
+    stratum = major_cell_type_3,
+    alluvium = major_cell_type_3,
+    y = value
+  )
+) +
+  geom_alluvium(aes(fill = major_cell_type_3),
+    width = 0.3,
+    alpha = 0.5
+  ) +
+  geom_stratum(aes(fill = major_cell_type_3),
+    width = 0.3, 
+    linewidth = 0.3
+  ) +
+  scale_fill_manual(values = cols_links) +
+  scale_x_discrete(labels = c("Experiment 1", "Experiment 2", "Experiment 3")) +
+  scale_y_continuous(
+    labels = scales::percent,
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.1),
+    expand = c(0, 0)
+  ) +
+  labs(y = "Proportion of cells", x = NULL, fill = NULL) +
+  theme_classic()
+save_fig_E3("E1E2E3_comparision_majortypes.pdf", width = 5, height = 4) # Supplemmentary
+```
+
+```{r}
+comp
+alluvial_df_fixed 
+```
+
+```{r}
+# Exporting cellIDs for TREX analysis
+ids_E3 <- rownames(E16_barcodes_subset_4@meta.data)
+head(ids_E3)
+ids_E3 <- gsub("-1$", "", ids_E3)
+head(ids_E3)
+indexed_ids_E3 <- data.frame(
+  index = seq(0, length(ids_E3) - 1),
+  cell_id = ids_E3
+)
+
+write.table(
+  indexed_ids_E3,
+  file = "Data/cellids_E3.tsv",
+  sep = "\t",
+  quote = FALSE,
+  row.names = FALSE,
+  col.names = FALSE
+)
+```
+
+```{r}
+#Find differentially expressed genes
+Idents(E16_barcodes_E3) <- E16_barcodes_E3$assigned_cell_type
+E16_barcodes_E3 <- PrepSCTFindMarkers(E16_barcodes_E3)
+markers_E3_subtypes <- FindAllMarkers(
+  E16_barcodes_E3,
+  only.pos = TRUE, # only upregulated genes
+  min.pct = 0.50,
+  logfc.threshold = 1,
+  test.use = "wilcox"
+)
+
+markers_E3_subtypes_to_export <- markers_E3_subtypes %>%
+  filter(p_val_adj < 0.05 & avg_log2FC > 1) %>%
+  mutate(pct_diff = pct.1 - pct.2) %>%
+  select(cluster, gene, avg_log2FC, p_val_adj, everything()) %>%
+  arrange(cluster, desc(avg_log2FC))
+
+# Save
+write.csv(markers_E3_subtypes_to_export,file = file.path(fig_dir_E3, "E16_E3_subtypes_markers.csv"),row.names = FALSE)
+write.xlsx(
+  markers_E3_subtypes_to_export,
+  file = file.path(fig_dir_E3, "E16_E3_subtypes_markers.xlsx"),
+  rowNames = FALSE
+)
+
+```
+
+
+```{r}
+# Load clonal info from TREX output
+clonedata_E3 <- read.table("Clonal_analysis/TREX_output_E3/clones.txt", header = TRUE, sep = "\t")
+clonedata_E3$cell_id <- paste0(clonedata_E3$cell_id, "-1")
+
+# Summarize occurrences
+clone_summary_E3 <- clonedata_E3 %>%
+  group_by(clone_nr) %>%
+  summarise(count = n())
+
+n_unique_clones_E3 <- clonedata_E3 %>%
+  filter(!is.na(clone_nr)) %>%
+  summarise(n_unique_clones = n_distinct(clone_nr))
+
+clonedata_E3 %>%
+  filter(grepl("^(e16_s1|e16_ji1|e16_c1)", cell_id), !is.na(clone_nr)) %>%
+  mutate(prefix = str_extract(cell_id, "^(e16_s1|e16_ji1|e16_c1)")) %>%
+  group_by(prefix) %>%
+  summarise(n_unique_clones = n_distinct(clone_nr), .groups = "drop") %>%
+  arrange(prefix)
+
+sum(clone_summary_E3$count == 1) #After cleanup: 1634 singletons
+sum(clone_summary_E3$count > 1) #After cleanup:  365 multicellualr clone
+
+# Histogram of clone sizes
+ggplot(clone_summary_E3, aes(x = count)) +
+  geom_histogram(binwidth = 1, fill = "steelblue") +
+  scale_y_continuous(limits = c(0, 140), breaks = seq(0, 140, by = 10), expand = c(0, 0)) +
+  labs(
+    title = "Distribution of Clone Sizes Experiment 3",
+    x = "Number of cells per CloneID",
+    y = "Frequency"
+  ) +
+  theme_bw() # Supplementary
+save_fig_E3("E3_clonesize.pdf")
+
+ggplot(clone_summary_E3, aes(x = count)) +
+  geom_histogram(binwidth = 1, fill = "#4C72B0") +
+  coord_cartesian(xlim = c(1, 27), ylim = c(0, 70)) +
+  scale_x_continuous(breaks = seq(1, 27, by = 1)) +
+  scale_y_continuous(breaks = seq(0, 70, by = 10), expand = c(0, 0)) +
+  labs(
+    title = "Zoomed View",
+    x = "Number of cells per CloneID",
+    y = "Frequency"
+  ) +
+  theme_bw() 
+save_fig_E3("E3_clonesize_Zoomin.pdf",width = 8.5, height = 4)
+```
+
+```{r}
+# Filter metadata and calculate the average size of muticellualr clones
+avg_clone_stats_E3 <- clonedata_E3 %>%
+  filter(!is.na(clone_nr)) %>%
+  left_join(clone_summary_E3, by = "clone_nr") %>%
+  filter(count > 1) %>%
+  group_by(clone_nr) %>%
+  summarise(n_cells = n(), .groups = "drop") %>%
+  summarise(
+    total_clones = n(),
+    mean_size = mean(n_cells),
+    median_size = median(n_cells),
+    max_size = max(n_cells)
+  )
+
+print(avg_clone_stats_E3)
+```
+
+```{r,fig.height = 4, fig.width = 6, fig.align = "center"}
+E16_E3_metadata <- E16_barcodes_E3@meta.data
+E16_E3_metadata <- E16_E3_metadata %>% left_join(clonedata_E3, by = c("cells" = "cell_id"))
+rownames(E16_E3_metadata) <- E16_E3_metadata$cells
+E16_E3_metadata <- E16_E3_metadata %>% mutate(clones = ifelse(is.na(clone_nr), "without CloneID", "with CloneID"))
+table(E16_E3_metadata$sample, E16_E3_metadata$clones)
+
+E16_barcodes_E3@meta.data <- E16_E3_metadata
+DimPlot(E16_barcodes_E3, reduction = "umap.harmony", group.by = "clones") + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2") #Supplementary
+save_fig_E3("E3_umap_cloneID.pdf")
+```
+
+```{r}
+# Create a pie graph
+E3_clones_counts <- table(E16_barcodes_E3$clones)
+pdf(file.path(fig_dir_E3, "pie_clonedistribution_E3.pdf"), width = 8, height = 6)
+pie(E3_clones_counts,
+  main = "CloneID Distribution of E16 Barcodes E3",
+  col = c("tomato", "steelblue"),
+  labels = paste(names(E3_clones_counts), " (", E3_clones_counts, ")", sep = "")
+)
+dev.off() # Supplementary
+
+# Remove label
+pdf(file.path(fig_dir_E3, "pie_clonedistribution_nolabel_E3.pdf"), width = 8, height = 6)
+pie(E3_clones_counts,
+  col = c("tomato", "steelblue"),
+  labels = NA
+)
+dev.off()
+```
+
+```{r}
+table(E16_barcodes_E3@meta.data$clones) # 77.7% 10678/(10678+5626) = 10678/16304 =65,4%. 10359/(5196+10359) 10359/15555 =66.6% # Afrer cleanup: 10290/(10290+5140)=10290/15430=66,7%
+VlnPlot(E16_barcodes_E3, group.by = "clones", features = c("nUMI", "nGene", "percent.mt"), cols = c("tomato", "steelblue"), ncol = 3, pt.size = 0.01) + plot_layout(guides = "collect") & theme(axis.title.x = element_blank())
+save_fig_E3("Vln_cloneID_E3.pdf", width = 12, height = 6) # Supplementary
+```
+
+```{r}
+# Calculate clone frequencies
+clone_counts_E3 <- table(E16_barcodes_E3$clone_nr)
+# Assign clone frequencies to each cell
+E16_barcodes_E3$clones_per_cell <- ifelse(
+  is.na(E16_barcodes_E3$clone_nr),
+  0,
+  clone_counts_E3[as.character(E16_barcodes_E3$clone_nr)]
+)
+# Check the new metadata column
+head(E16_barcodes_E3@meta.data)
+
+# clones with different number of cells,  0, 1, 2, 3, 4,5, 6 and more
+E16_barcodes_E3$clones_per_cell_2 <- E16_barcodes_E3$clones_per_cell
+E16_barcodes_E3$clones_per_cell_2[which(E16_barcodes_E3$clones_per_cell >= 6)] <- ">=6"
+clone_levels <- c("0", "1", "2", "3", "4", "5", ">=6")
+E16_barcodes_E3$clones_per_cell_2 <- factor(x = E16_barcodes_E3$clones_per_cell_2, levels = clone_levels)
+DimPlot(E16_barcodes_E3, reduction = "umap.harmony", group.by = "clones_per_cell_2", pt.size = 0.1, cols = c("0" = "#969696", "1" = "#e377c2", "2" = "#FC8D59", "3" = "#1A9850", "4" = "#1F78B4", "5" = "#8856A7", ">=6" = "#F0E442")) + ggtitle("Clone size") + xlab("UMAP1") + ylab("UMAP2")
+save_fig_E3("E3_umap_nocellsperclone.pdf")
+```
+
+```{r}
+# unicellualr clone, multicellular clones
+E16_barcodes_E3$clones_per_cell_3 <- E16_barcodes_E3$clones_per_cell
+E16_barcodes_E3$clones_per_cell_3[which(E16_barcodes_E3$clones_per_cell >= 2)] <- ">=2"
+clone_levels_3 <- c("0", "1", ">=2")
+E16_barcodes_E3$clones_per_cell_3 <- factor(x = E16_barcodes_E3$clones_per_cell_3, levels = clone_levels_3)
+
+DimPlot(E16_barcodes_E3, reduction = "umap.harmony", group.by = "clones_per_cell_3", pt.size = 0.2, cols = c("0" = "#969696", "1" = "#e377c2", ">=2" = "#0072B2")) + ggtitle("Unicellular and multicellular clones") + xlab("UMAP1") + ylab("UMAP2")
+save_fig_E3("E3_umap_unicellularandmulticellular_bysample.pdf")
+```
+
+```{r}
+# multicellular clones with  different cell types
+E16_barcodes_E3$clones_per_cell_4 <- E16_barcodes_E3$clones_per_cell
+E16_barcodes_E3$clones_per_cell_4[which(E16_barcodes_E3$clones_per_cell == 0)] <- "No CloneID"
+E16_barcodes_E3$clones_per_cell_4[which(E16_barcodes_E3$clones_per_cell == 1)] <- "Singleton"
+E16_barcodes_E3$clones_per_cell_4[which(E16_barcodes_E3$clones_per_cell >= 2)] <- "Multicellular"
+E16_barcodes_E3$clones_per_cell_4 <- factor(
+  E16_barcodes_E3$clones_per_cell_4,
+  levels = c("Singleton", "Multicellular", "No CloneID")
+)
+DimPlot(E16_barcodes_E3, reduction = "umap.harmony", group.by = "clones_per_cell_4", pt.size = 0.5, cols = c("No CloneID" = "#969696", "Singleton" = "#e377c2", "Multicellular" = "#0072B2")) + ggtitle("Singletons and multicellular clones") + xlab("UMAP1") + ylab("UMAP2") # Supplementary
+save_fig_E3("E3_umap_singletonsandmulticellular.pdf")
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+# Clone categories type
+clone_metadata_E3 <- E16_barcodes_E3@meta.data %>%
+  filter(!is.na(clone_nr)) # remove NA clone IDs
+
+clone_analysis_E3 <- clone_metadata_E3 %>%
+  dplyr::select(clone_nr, major_cell_type) %>%
+  filter(!is.na(major_cell_type))
+
+singleton_clones_E3 <- clone_analysis_E3 %>%
+  group_by(clone_nr) %>% # group by clone ID
+  tally() %>% # count how many times each clone appears
+  filter(n == 1) %>% # keep only clones that appear once
+  pull(clone_nr)
+
+length(singleton_clones_E3) # 1634 clones
+
+single_type_clones_E3 <- clone_metadata_E3 %>%
+  group_by(clone_nr) %>%
+  summarise(
+    n_cells = n(), # number of cells per clone
+    n_cell_types = n_distinct(major_cell_type), # number of cell types per clone
+    .groups = "drop"
+  ) %>%
+  filter(n_cell_types == 1, n_cells > 1) %>% # single-type and more than 1 cell
+  pull(clone_nr)
+
+length(single_type_clones_E3) # 219 single-type
+
+multi_type_clones_E3 <- clone_analysis_E3 %>%
+  group_by(clone_nr) %>%
+  summarise(n_cell_types = n_distinct(major_cell_type), .groups = "drop") %>%
+  filter(n_cell_types > 1) %>%
+  pull(clone_nr)
+length(multi_type_clones_E3) # 146 multi-type clones
+
+E16_barcodes_E3$clone_type <- case_when(
+  E16_barcodes_E3$clone_nr %in% single_type_clones_E3 ~ "Single-cell-type multicellular",
+  E16_barcodes_E3$clone_nr %in% multi_type_clones_E3 ~ "Multi-cell-type multicellular",
+  E16_barcodes_E3$clone_nr %in% singleton_clones_E3 ~ "Singleton",
+  is.na(E16_barcodes_E3$clone_nr) ~ "No CloneID",
+  TRUE ~ "Other"
+)
+
+E16_barcodes_E3$clone_type <- factor(
+  E16_barcodes_E3$clone_type,
+  levels = c("Singleton", "Single-cell-type multicellular", "Multi-cell-type multicellular", "No CloneID")
+)
+
+cols_clonetype <- c(
+  "Singleton" = "#e377c2", # Pink
+  "Single-cell-type multicellular" = "#2171B5", # Blue
+  "Multi-cell-type multicellular" = "#91CF60", # Green
+  "No CloneID" = "#969696" # Gray
+)
+
+DimPlot(E16_barcodes_E3, reduction = "umap.harmony", group.by = "clone_type", cols = cols_clonetype) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2") # Supplementary
+save_fig_E3("umap_differenttypesofclones_celltypes_E3.pdf", height = 6, width = 10)
+```
+
+```{r}
+DimPlot(E16_barcodes_E3, reduction = "umap.harmony", group.by = "clone_type", split.by = "sample", cols = cols_clonetype, pt.size = 0.5) + ggtitle("Different types of clones") + xlab("UMAP1") + ylab("UMAP2") # Supplementary
+save_fig_E3("umap_differenttypesofclones_splitbysample_E3.pdf", width = 18, height = 6)
+```
+
+```{r}
+# Create a pie graph
+E3_clone_type_counts <- table(E16_barcodes_E3$clone_type)
+
+pdf(file.path(fig_dir_E3, "pie_clone_type_distribution_E3.pdf"), width = 8, height = 6)
+pie(E3_clone_type_counts,
+  main = "Clone Categories Distribution of E16 Barcodes E3",
+  col = cols_clonetype,
+  labels = paste(names(E3_clone_type_counts), " (", E3_clone_type_counts, " cells)", sep = "")
+)
+dev.off() # Supplementary
+
+# Remove label
+pdf(file.path(fig_dir_E3, "pie_clone_type_distribution_nolabel_E3.pdf"), width = 8, height = 6)
+pie(E3_clone_type_counts,
+  col = cols_clonetype,
+  labels = NA
+)
+dev.off()
+```
+
+```{r}
+# First, count total clones per major cell type
+total_clones_per_type_E3 <- E16_barcodes_E3@meta.data %>%
+  group_by(major_cell_type) %>%
+  filter(clone_type != "No CloneID") %>%
+  summarise(total_clones = n_distinct(clone_nr), .groups = "drop")
+
+# Count singleton clones per major cell type
+num_singleton_clones_E3 <- E16_barcodes_E3@meta.data %>%
+  filter(clone_nr %in% singleton_clones_E3) %>%
+  group_by(major_cell_type) %>%
+  summarise(n_singleton = n_distinct(clone_nr), .groups = "drop")
+
+# Count single-type clones per major cell type
+num_single_type_clones_E3 <- E16_barcodes_E3@meta.data %>%
+  filter(clone_nr %in% single_type_clones_E3) %>%
+  group_by(major_cell_type) %>%
+  summarise(n_single_type = n_distinct(clone_nr), .groups = "drop")
+
+# Count multi-type clones per major cell type
+num_multi_type_clones_E3 <- E16_barcodes_E3@meta.data %>%
+  filter(clone_nr %in% multi_type_clones_E3) %>%
+  group_by(major_cell_type) %>%
+  summarise(n_multi_type = n_distinct(clone_nr), .groups = "drop")
+
+# Combine all counts
+clone_counts_E3 <- total_clones_per_type_E3 %>%
+  left_join(num_singleton_clones_E3, by = "major_cell_type") %>%
+  left_join(num_single_type_clones_E3, by = "major_cell_type") %>%
+  left_join(num_multi_type_clones_E3, by = "major_cell_type") %>%
+  # Replace NA with 0 for cell types with no clones in that category
+  mutate(
+    n_singleton = replace_na(n_singleton, 0),
+    n_single_type = replace_na(n_single_type, 0),
+    n_multi_type = replace_na(n_multi_type, 0)
+  ) %>%
+  # Calculate percentages within each major_cell_type_4
+  mutate(
+    pct_singleton = n_singleton / total_clones * 100,
+    pct_single_type = n_single_type / total_clones * 100,
+    pct_multi_type = n_multi_type / total_clones * 100
+  )
+
+# View the results
+clone_counts_E3
+```
+
+```{r}
+# Convert counts to long format
+clone_counts_long_counts_E3 <- clone_counts_E3 %>%
+  dplyr::select(major_cell_type, n_singleton, n_single_type, n_multi_type) %>%
+  pivot_longer(
+    cols = starts_with("n_"),
+    names_to = "clone_category",
+    values_to = "count"
+  ) %>%
+  mutate(
+    clone_category = case_when(
+      clone_category == "n_singleton" ~ "Singleton",
+      clone_category == "n_single_type" ~ "Single-cell-type multicellular",
+      clone_category == "n_multi_type" ~ "Multi-cell-type multicellular"
+    )
+  )
+
+# Plot as stacked bar plot of counts
+ggplot(clone_counts_long_counts_E3, aes(x = major_cell_type, y = count, fill = clone_category)) +
+  geom_col() +
+  geom_text(
+    data = subset(clone_counts_long_counts_E3, count > 0),
+    aes(label = count),
+    position = position_stack(vjust = 0.5),
+    size = 5
+  ) +
+  scale_fill_manual(values = cols_clonetype)  +
+  labs(
+    x = "Major Cell Type",
+    y = "Number of Clones",
+    fill = "Clone Category"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 12)
+  )
+
+save_fig_E3("stacked_counts_noodclonestypes_11types_E3.pdf", width = 10, height = 12)
+```
+
+```{r,fig.height = 6, fig.width = 15, fig.align = "center"}
+clone_fraction_df_E3 <- E16_barcodes_E3@meta.data %>%
+  filter(clone_type != "No CloneID") %>%
+  distinct(major_cell_type, clone_nr, clone_type) %>%
+  dplyr::count(major_cell_type, clone_type, name = "n_clones") %>% 
+  group_by(major_cell_type) %>%
+  mutate(
+    total_clones = sum(n_clones),
+    percent = 100 * n_clones / total_clones
+  ) %>%
+  ungroup()
+
+cell_fraction_df_E3 <- E16_barcodes_E3@meta.data %>%
+  filter(clone_type != "No CloneID") %>%
+  dplyr::count(major_cell_type, clone_type, name = "n_cells") %>%
+  group_by(major_cell_type) %>%
+  mutate(
+    total_cells = sum(n_cells),
+    percent = 100 * n_cells / total_cells
+  ) %>%
+  ungroup()
+
+cols_clonetype <- c(
+  "Singleton" = "#f0f0f0",   # light grey instead of pure white
+  "Single-cell-type multicellular" = "#969696",
+  "Multi-cell-type multicellular" = "#252525"
+)
+
+p_clone_E3 <- ggplot(
+  clone_fraction_df_E3,
+  aes(x = major_cell_type, y = percent, fill = clone_type)
+) +
+  geom_col(width = 0.8) +
+  scale_fill_manual(values = cols_clonetype) +
+  scale_y_continuous(
+    limits = c(0, 101),
+    breaks = seq(0, 100, 25),
+    expand = c(0, 0)
+  ) +
+  labs(
+    x = "Cell type",
+    y = "% of clone categories",
+    fill = "Clone category",
+    title = "Clone-based composition (Lineage view)"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  )
+
+p_cell_E3 <- ggplot(
+  cell_fraction_df_E3,
+  aes(x = major_cell_type, y = percent, fill = clone_type)
+) +
+  geom_col(width = 0.8) +
+  scale_fill_manual(values = cols_clonetype) +
+  scale_y_continuous(
+    limits = c(0, 101),
+    breaks = seq(0, 100, 25),
+    expand = c(0, 0)
+  ) +
+  labs(
+    x = "Cell type",
+    y = "% of cells",
+    fill = "Clone category",
+    title = "Cell-based composition (Expansion view)"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+
+p_clone_E3 + p_cell_E3
+save_fig_E3("Clone_based_cell_clones_E3_newcolor.pdf", width = 12, height = 6)
+```
+
+```{r}
+# The number of cells in clones and the proportion of cells in clones per cell type in E1  #Supplementary
+clone_summary_E3 <- E16_barcodes_E3@meta.data %>%
+  group_by(assigned_cell_type) %>%
+  summarise(
+    total_cells = n(),
+    clonal_cells = sum(clones == "with CloneID")
+  ) %>%
+  mutate(
+    proportion_clonal = clonal_cells / total_cells
+  )
+
+ggplot(clone_summary_E3, aes(x = assigned_cell_type, y = clonal_cells, fill = assigned_cell_type)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  scale_y_continuous(limits = c(0, 4000), breaks = seq(0, 4000, by = 500), expand = c(0, 0)) +
+  ylab("Number of cells with CloneID") +
+  xlab("Cell type") +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+save_fig_E3("bar_no_withcCloneID_E3_11types.pdf", width = 6, height = 4)
+
+ggplot(clone_summary_E3, aes(x = assigned_cell_type, y = proportion_clonal, fill = assigned_cell_type)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = distinct11) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1.00), breaks = seq(0, 1.00, by = 0.20), expand = c(0, 0)) +
+  ylab("Proportion of cells with CloneID") +
+  xlab("Cell type") +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+save_fig_E3("bar_prop_withcCloneID_E3_11types.pdf", width = 6, height = 4)
+```
+
+```{r}
+# Prepare for the Upset Plot For E3
+clone_metadata_E3 <- E16_barcodes_E3@meta.data %>%
+  filter(!is.na(clone_nr)) # remove NA
+
+clone_counts_E3 <- as.data.frame(table(clone_metadata_E3$clone_nr))
+colnames(clone_counts_E3) <- c("clone_nr", "cell_count")
+shared_clones_E3 <- clone_counts_E3 %>%
+  filter(cell_count > 1) # only leaving multicellular clones
+
+shared_clone_metadata_E3 <- clone_metadata_E3 %>%
+  filter(clone_nr %in% shared_clones_E3$clone_nr)
+
+clone_analysis_E3 <- shared_clone_metadata_E3 %>%
+  dplyr::select(clone_nr, major_cell_type_3)
+
+data_wide_E3 <- as.data.frame.matrix(table(clone_analysis_E3$clone_nr, clone_analysis_E3$major_cell_type_3))
+celltype_E3 <- colnames(data_wide_E3)
+set_sizes_E3 <- colSums(data_wide_E3)
+
+# Compute total number of cells per clone (sum across all cell types)
+clone_sizes_E3 <- rowSums(data_wide_E3)
+
+# Convert to binary for UpSet intersections
+binary_matrix_E3 <- data_wide_E3 %>%
+  mutate(across(everything(), ~ ifelse(. > 0, 1, 0))) # Convert non-zero values to 1
+binary_matrix_E3$Clone_Size <- clone_sizes_E3
+sets_vec_E3 <- colnames(binary_matrix_E3)[-ncol(binary_matrix_E3)]
+```
+
+```{r,fig.height = 6, fig.width = 7, fig.align = "center"}
+pdf(file.path(fig_dir_E3, "Uplot_3germlayers_black_E3.pdf"), width = 7, height = 6, onefile = FALSE)
+grid::grid.newpage()
+upset(
+  binary_matrix_E3[, -ncol(binary_matrix_E3)],
+  sets = sets_vec_E3,
+  order.by = "freq",
+  point.size = 6, 
+  line.size = 2, 
+  sets.x.label = "Total multicellular clones",
+  text.scale = c(2, 2, 2, 2, 2, 2)
+)
+dev.off()
+```
+
+```{r}
+cols_links <- c(
+  "Mesodermal" = "#FFD700",  
+  "Neural Crest" = "#6a0dad",  
+  "Endodermal" = "#FF69B4"   
+)
+
+clone_links_E3 <- E16_barcodes_E3@meta.data %>%
+  filter(clones_per_cell_4 == "Multicellular") %>%
+  dplyr::select(clone_nr, major_cell_type_3) %>%  
+  distinct()
+
+clone_pairs_E3 <- clone_links_E3 %>%
+  group_by(clone_nr) %>%
+  summarise(
+    types = list(unique(major_cell_type_3)),
+    n_types = n_distinct(major_cell_type_3),
+    .groups = "drop"
+  ) %>%
+  filter(n_types >= 2) %>%
+  rowwise() %>%
+  mutate(
+    pairs = list(combn(types, 2, simplify = FALSE))
+  ) %>%
+  tidyr::unnest(pairs) %>%
+  mutate(
+    from = sapply(pairs, `[`, 1),  # extract first element of each pair
+    to   = sapply(pairs, `[`, 2),  # extract second element
+    value = 1                       # each clone counts as 1
+  ) %>%
+  ungroup() %>%
+  group_by(from, to) %>%            # now count clones per pair
+  summarise(value = sum(value), .groups = "drop")
+
+self_links_E3 <- clone_links_E3 %>%
+  group_by(clone_nr) %>%
+  summarise(
+    types = list(unique(major_cell_type_3)), 
+    n_types = n_distinct(major_cell_type_3),
+    .groups="drop"
+  ) %>%
+  filter(n_types == 1) %>%
+  mutate(
+    cell_type = sapply(types, `[`, 1),  # extract from list
+    value = 1
+  ) %>%
+  ungroup() %>%
+  group_by(cell_type) %>%                # count clones per cell type
+  summarise(value = sum(value), .groups = "drop") %>%
+  mutate(from = cell_type, to = cell_type) %>%
+  select(from, to, value)
+
+pairwise_links_all_E3 <- bind_rows(clone_pairs_E3, self_links_E3) 
+pairwise_links_all_E3 <- pairwise_links_all_E3 %>% dplyr::select(from, to, value)
+
+sectors <- unique(c(pairwise_links_all_E3$from, pairwise_links_all_E3$to))
+grid.col <- cols_links[sectors]
+
+pdf(file.path(fig_dir_E3, "chorddigram_clonebased_E3.pdf"), width = 3, height = 3)
+circos.clear()
+chordDiagram(
+  pairwise_links_all_E3,
+  grid.col = grid.col,
+  transparency = 0.4 
+) 
+dev.off()
+```
+
+```{r}
+# For Bandler-et al lineage anlaysis for Fig 4F 4G
+df_E3_clonal_celltype <- E16_barcodes_E3@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, major_cell_type) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = major_cell_type
+  )
+
+
+write.csv(df_E3_clonal_celltype, "Data/E3_df_clonalanalysis_majorcelltypes.csv", row.names = TRUE)
+```
+
+```{r}
+saveRDS(object = E16_barcodes_E3, "Data/E16_barcodes_E3.rds")
+```
+
+```{r}
+cells_barcodes_E3 <- read.delim(
+  "Clonal_analysis/TREX_output_E3/clone_details.txt",
+  stringsAsFactors = FALSE
+)
+
+cells_barcodes_E3$clone_ids_per_cell <- factor(cells_barcodes_E3$clone_ids_per_cell)
+# Count frequencies
+freq_table_E3 <- dplyr::count(cells_barcodes_E3, clone_ids_per_cell)
+
+cell_types_E3 <- levels(cells_barcodes_E3$clone_ids_per_cell)
+cell_colors <- hue_pal()(length(cell_types_E3))
+names(cell_colors) <- cell_types_E3
+
+ggplot(freq_table_E3, aes(x = clone_ids_per_cell, y = n, fill = clone_ids_per_cell)) + # fill = "#4C72B0"
+  geom_bar(stat = "identity", width = 0.9) +
+  scale_fill_manual(values = cell_colors) +
+  scale_y_continuous(limits = c(0, 1000), expand = c(0, 0)) +
+  labs(
+    x = "Barcodes per CloneID",
+    y = "Number of clones"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(size = 14, angle = 0, vjust = 0.5),
+    axis.title.x = element_text(size = 12, face = "bold"),
+    axis.title.y = element_text(size = 12, face = "bold"),
+    panel.grid.major.x = element_blank(),
+    legend.position = "none"
+  ) # Supplementary
+
+save_fig_E3("barcodes_percloneID_E3.pdf", width = 8.5, height = 4)
+```
+
+```{r}
+freq_table_E3 <- dplyr::count(cells_barcodes_E3, clone_ids_per_cell) %>%
+  mutate(
+    percent = n / sum(n) * 100,
+    label = paste0(round(percent, 1), "%")
+  )
+
+pdf(file.path(fig_dir_E3, "pie_barcodes_percloneID_E3.pdf"), width = 8, height = 6)
+ggplot(
+  freq_table_E3,
+  aes(x = "", y = n, fill = factor(clone_ids_per_cell))
+) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(fill = "Barcodes per CloneID") +
+  theme_void() +
+  theme(legend.position = "none")
+dev.off()
+```
+
+
+```{r}
+#Remove the noise, keep the ones 
+distinct_clones <- shared_clone_metadata_E3 %>%
+  group_by(clone_nr) %>%
+  filter(n_distinct(major_cell_type_3) == 1) %>%
+  ungroup() %>%
+  distinct(clone_nr) %>%
+  pull(clone_nr)# 236 CloneIDs
+
+E16_barcodes_E3@meta.data <- E16_barcodes_E3@meta.data %>%
+  mutate(
+    epiblast_label = ifelse(clone_nr %in% distinct_clones,
+      "non-epiblast",
+      "epiblast"
+    )
+  )
+
+DimPlot(E16_barcodes_E3, reduction = "umap.harmony", group.by = "epiblast_label") + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2") # Supplementary
+save_fig_E3("Epibalsts_clones_E3.pdf")
+```
+
+```{r}
+E16_E3_non_epiblast <- subset(
+  E16_barcodes_E3,
+  subset = epiblast_label == "non-epiblast"
+)
+
+Idents(E16_E3_non_epiblast) <-  E16_E3_non_epiblast$major_cell_type
+DimPlot(E16_E3_non_epiblast, reduction = "umap.harmony", cols = distinct8) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig_E3("Subset_nonEpibalsts_clones_E3_celltype.pdf")
+```
+
+```{r}
+# For Bandler-et al lineage anlaysis for Fig 4F 4G
+df_E3_clonal_celltype_2 <- E16_E3_non_epiblast@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  select(clone_nr, major_cell_type) %>%
+  rename(
+    cloneID = clone_nr,
+    ident = major_cell_type
+  )
+
+write.csv(df_E3_clonal_celltype_2, "Data/E3_df_clonalanalysis_majorcelltypes_nonepiblast.csv", row.names = TRUE)
+```
+
+```{r}
+# Find regional disperse clones
+clone_metadata_E3 <- E16_barcodes_E3@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  filter(clones_per_cell_4 == "Multicellular") 
+```
+
+```{r}
+regional_clone_summary_E3 <- clone_metadata_E3 %>%
+  dplyr::select(clone_nr, sample, clone_type, major_cell_type) %>%
+  group_by(clone_nr) %>%
+  summarise(
+    regions = list(unique(sample)),
+    n_regions = n_distinct(sample),
+    clone_types = list(unique(clone_type)),
+    cell_types = list(unique(major_cell_type)),
+    n_cells = n(),
+    .groups = "drop"
+  )
+
+# Identify clones found in multiple regions
+dispersed_clones_E3 <- regional_clone_summary_E3 %>%
+  filter(n_regions > 1) # 118 clones including cross-germ layer clones
+
+summary_row_E3 <- dispersed_clones_E3 %>%
+  summarise(
+    clone_nr = paste0("TOTAL(", length(clone_nr), " clones)"),
+    regions = list(unique(unlist(regions))),
+    n_regions = 2,
+    clone_types = list(unique(unlist(clone_types))),
+    cell_types = list(unique(unlist(cell_types))),
+    n_cells = sum(n_cells)
+  )
+
+dispersed_clones_E3 <- dispersed_clones_E3 %>%
+  mutate(clone_nr = as.character(clone_nr)) %>%
+  unique()
+
+dispersed_clones_with_total_E3 <- bind_rows(dispersed_clones_E3, summary_row_E3)
+
+dispersed_clones_df_E3 <- dispersed_clones_with_total_E3 %>%
+  mutate(across(where(is.list), ~ sapply(., toString)))
+write.csv(dispersed_clones_df_E3, "Data/E3_regionaldispersed_clones.csv", row.names = FALSE)
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+clone_cols <- c(
+  "No CloneID" = "grey70",
+  "Singleton" = "grey70",
+  "Region not shared at all" = "#56B4E9",
+  "Region shared by stomach, jej_ileum" = "#006D2C",
+  "Region shared by stomach, colon" = "#006D2C",
+  "Region shared by jej_ileum, colon" = "#006D2C",
+  "Region shared by stomach, jej_ile, colon" = "#D81B60"
+)
+
+clone_region_map_E3 <- E16_barcodes_E3@meta.data %>%
+  group_by(clone_nr) %>%
+  summarise(
+    regions = list(sort(unique(sample))),
+    clone_type = dplyr::first(as.character(clone_type)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    shared_clone_category = case_when(
+      clone_type == "No CloneID" ~ "No CloneID",
+      clone_type == "Singleton" ~ "Singleton",
+      TRUE ~ map_chr(regions, function(r) {
+        if (length(r) == 1) {
+          "Region not shared at all"
+        } else if (all(c("E16_stomach", "E16_jej_ileum") %in% r) && length(r) == 2) {
+          "Region shared by stomach, jej_ileum"
+        } else if (all(c("E16_stomach", "E16_colon") %in% r) && length(r) == 2) {
+          "Region shared by stomach, colon"
+        } else if (all(c("E16_jej_ileum", "E16_colon") %in% r) && length(r) == 2) {
+          "Region shared by jej_ileum, colon"
+        } else if (all(c("E16_stomach", "E16_jej_ileum", "E16_colon") %in% r) && length(r) == 3) {
+          "Region shared by stomach, jej_ile, colon"
+        } else {
+          stop(paste("Unexpected region combination:", paste(r, collapse = ", ")))
+        }
+      })
+    )
+  )
+
+E16_barcodes_E3@meta.data$shared_clone_category <-
+  clone_region_map_E3$shared_clone_category[
+    match(E16_barcodes_E3@meta.data$clone_nr, clone_region_map_E3$clone_nr)
+  ]
+
+E16_barcodes_E3@meta.data$shared_clone_category <- factor(
+  E16_barcodes_E3@meta.data$shared_clone_category,
+  levels = c(
+    "No CloneID",
+    "Singleton",
+    "Region not shared at all",
+    "Region shared by stomach, jej_ileum",
+    "Region shared by stomach, colon",
+    "Region shared by jej_ileum, colon",
+    "Region shared by stomach, jej_ile, colon"
+  )
+)
+
+table(E16_barcodes_E3@meta.data$shared_clone_category)
+E16_barcodes_E3@meta.data$shared_clone_category <- factor(
+  E16_barcodes_E3@meta.data$shared_clone_category,
+  levels = names(clone_cols)
+)
+
+DimPlot(E16_barcodes_E3, group.by = "shared_clone_category", reduction = "umap.harmony", pt.size = 0.5, order = T, cols = clone_cols)  + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig_E3("umap_E3_regional_sharedclones_includingcrossgermlayers.pdf", width = 10, height = 6)
+```
+
+```{r}
+# Prepare for the Upset Plot For E3  with  non-epiblast clones only 
+distinct_clones_E3 <- clone_metadata_E3%>%
+  group_by(clone_nr) %>%
+  filter(n_distinct(major_cell_type_3) == 1) %>%
+  ungroup() %>%
+  distinct(clone_nr) %>%
+  pull(clone_nr)# 236 CloneIDs
+
+non_epiblast_clone_metadata_E3 <- clone_metadata_E3 %>%
+  filter(clone_nr %in% distinct_clones_E3)
+
+regional_clone_summary_E3 <- non_epiblast_clone_metadata_E3 %>%
+  dplyr::select(clone_nr, sample, clone_type, major_cell_type) %>%
+  group_by(clone_nr) %>%
+  summarise(
+    regions = list(unique(sample)), # list of regions for each clone
+    n_regions = n_distinct(sample),
+    clone_types = list(unique(clone_type)),
+    cell_types = list(unique(major_cell_type)), # number of distinct regions
+    n_cells = n(), # total number of cells in this clone
+    .groups = "drop"
+  )
+
+# Identify clones found in multiple regions
+dispersed_clones_E3 <- regional_clone_summary_E3 %>%
+  filter(n_regions > 1) #  59 clones
+
+summary_row_E3 <- dispersed_clones_E3 %>%
+  summarise(
+    clone_nr = paste0("TOTAL(", length(clone_nr), " clones)"),
+    regions = list(unique(unlist(regions))),
+    n_regions = 3,
+    clone_types = list(unique(unlist(clone_types))),
+    cell_types = list(unique(unlist(cell_types))),
+    n_cells = sum(n_cells)
+  )
+
+dispersed_clones_E3 <- dispersed_clones_E3 %>%
+  mutate(clone_nr = as.character(clone_nr)) %>%
+  unique()
+
+dispersed_clones_with_total_E3 <- bind_rows(dispersed_clones_E3, summary_row_E3)
+dispersed_clones_df_E3 <- dispersed_clones_with_total_E3 %>%
+  mutate(across(where(is.list), ~ sapply(., toString)))
+write.csv(dispersed_clones_df_E3, "Data/E3_regionaldispersed_clones_nonepiblast.csv", row.names = FALSE)
+```
+
+```{r,fig.height = 6, fig.width = 10, fig.align = "center"}
+cross_germ_layer_clones_E3 <- clone_metadata_E3 %>%
+  group_by(clone_nr) %>%
+  summarise(
+    n_major_types = n_distinct(major_cell_type_3),
+    .groups = "drop"
+  ) %>%
+  filter(n_major_types > 1) %>%
+  pull(clone_nr)
+
+clone_region_map_E3 <- E16_barcodes_E3@meta.data %>%
+  group_by(clone_nr) %>%
+  summarise(
+    regions = list(sort(unique(sample))),
+    clone_type = dplyr::first(as.character(clone_type)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    shared_clone_category = case_when(
+      clone_type == "No CloneID" ~ "No CloneID",
+      clone_type == "Singleton" ~ "Singleton",
+      TRUE ~ map_chr(regions, function(r) {
+        if (length(r) == 1) {
+          "Region not shared at all"
+        } else if (all(c("E16_stomach", "E16_jej_ileum") %in% r) && length(r) == 2) {
+          "Region shared by stomach, jej_ileum"
+        } else if (all(c("E16_stomach", "E16_colon") %in% r) && length(r) == 2) {
+          "Region shared by stomach, colon"
+        } else if (all(c("E16_jej_ileum", "E16_colon") %in% r) && length(r) == 2) {
+          "Region shared by jej_ileum, colon"
+        } else if (all(c("E16_stomach", "E16_jej_ileum", "E16_colon") %in% r) && length(r) == 3) {
+          "Region shared by stomach, jej_ile, colon"
+        } else {
+          stop(paste("Unexpected region combination:", paste(r, collapse = ", ")))
+        }
+      })
+    ),
+    shared_clone_category = if_else(
+      clone_nr %in% cross_germ_layer_clones_E3,
+      "Cross-germ clones",
+      shared_clone_category
+    )
+  )
+
+E16_barcodes_E3@meta.data$shared_clone_category <-
+  clone_region_map_E3$shared_clone_category[
+    match(E16_barcodes_E3@meta.data$clone_nr, clone_region_map_E3$clone_nr)
+  ]
+
+E16_barcodes_E3@meta.data$shared_clone_category <- factor(
+  E16_barcodes_E3@meta.data$shared_clone_category,
+  levels = c(
+    "No CloneID",
+    "Singleton",
+    "Cross-germ clones",
+    "Region not shared at all",
+    "Region shared by stomach, jej_ileum",
+    "Region shared by stomach, colon",
+    "Region shared by jej_ileum, colon",
+    "Region shared by stomach, jej_ile, colon"
+  )
+)
+
+
+clone_cols <- c(
+  "No CloneID" = "grey70",
+  "Singleton" = "grey70",
+  "Cross-germ clones" = "grey70",
+  "Region not shared at all" = "#56B4E9",
+  "Region shared by stomach, jej_ileum" = "#006D2C",
+  "Region shared by stomach, colon" = "#006D2C",
+  "Region shared by jej_ileum, colon" = "#006D2C",
+  "Region shared by stomach, jej_ile, colon" = "#D81B60"
+)
+
+DimPlot(E16_barcodes_E3, group.by = "shared_clone_category", reduction = "umap.harmony", pt.size = 0.5, order = T, cols = clone_cols) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig_E3("umap_E3_regional_sharedclones.pdf", width = 10, height = 6)
+```
+
+```{r}
+clones_by_region <- shared_clone_metadata_E3 %>%
+  group_by(sample) %>% 
+  summarise(clones = list(unique(clone_nr))) %>%
+  deframe() # Converts to the list format UpSetR needs
+
+# Verify you have 3 sets
+print(names(clones_by_region))
+```
+
+
+```{r}
+# Calculate the number of distinct clones per region and cell type
+region_cell_summary <- non_epiblast_clone_metadata_E3 %>%
+  group_by(sample, major_cell_type) %>%
+  summarise(n_clones = n_distinct(clone_nr), .groups = "drop") %>%
+  pivot_wider(
+    names_from = sample, 
+    values_from = n_clones, 
+    values_fill = 0
+  )
+
+print(region_cell_summary)
+```
+
+```{r}
+# Identify CloneIDs that appear in more than one sample
+shared_ids <- non_epiblast_clone_metadata_E3 %>%
+  group_by(clone_nr) %>%
+  filter(n_distinct(sample) > 1) %>%
+  pull(clone_nr) %>%
+  unique()
+
+#  xtract the full composition of these specific clones
+shared_clones_composition <- non_epiblast_clone_metadata_E3 %>%
+  filter(clone_nr %in% shared_ids) %>%
+  group_by(clone_nr, sample) %>%
+  summarise(
+    cell_types = paste(sort(unique(major_cell_type)), collapse = ", "),
+    cell_count = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(clone_nr, sample)
+
+shared_type_occurrence <- non_epiblast_clone_metadata_E3 %>%
+  filter(clone_nr %in% shared_ids) %>%
+  group_by(major_cell_type) %>%
+  summarise(
+    n_shared_clones_containing_this_type = n_distinct(clone_nr),
+    total_cells_in_shared_clones = n()
+  ) %>%
+  arrange(desc(n_shared_clones_containing_this_type))
+
+print(shared_type_occurrence) # Only ENS- 59 clones with a total of 616 cells
+```
+
+```{r}
+clone_patterns <- non_epiblast_clone_metadata_E3 %>%
+  filter(clone_nr %in% shared_ids) %>%
+  group_by(clone_nr) %>%
+  summarise(
+    sample_combination = paste(sort(unique(sample)), collapse = " + "),
+    .groups = "drop"
+  )
+
+# summarize cell types per combination
+shared_combination_summary <- non_epiblast_clone_metadata_E3 %>%
+  filter(clone_nr %in% shared_ids) %>%
+  left_join(clone_patterns, by = "clone_nr") %>%
+  group_by(sample_combination, major_cell_type) %>%
+  summarise(
+    n_clones = n_distinct(clone_nr),
+    n_cells = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(sample_combination, desc(n_clones))
+
+print(shared_combination_summary)
+```
+
+```{r}
+wide_combination_summary <- shared_combination_summary %>%
+  select(sample_combination, major_cell_type, n_clones) %>%
+  pivot_wider(
+    names_from = sample_combination, 
+    values_from = n_clones, 
+    values_fill = 0
+  )
+
+print(wide_combination_summary)
+```
+
+```{r,fig.height = 4, fig.width = 3, fig.align = "center"}
+# Prepare for the Upset Plot For E2 ( non-epiblast)
+shared_clone_metadata_E3_nonepiblast <- non_epiblast_clone_metadata_E3%>%
+  filter(clone_nr %in% dispersed_clones_E3$clone_nr)
+
+heatmap_matrix_nonepiblast <- shared_clone_metadata_E3_nonepiblast %>%
+  distinct(clone_nr, sample) %>%
+  mutate(val = 1) %>%
+  pivot_wider(names_from = sample, values_from = val, values_fill = 0) %>%
+  column_to_rownames("clone_nr") %>%
+  as.matrix()
+
+# 2. Prepare the Row Annotation (Cell Type)
+# We need a vector of cell types that matches the order of the rows in our matrix
+row_data_nonpeiblast <- shared_clone_metadata_E3_nonepiblast %>%
+  distinct(clone_nr, major_cell_type) %>%
+  # If a clone has multiple types, we concatenate them or pick the first
+  group_by(clone_nr) %>%
+  summarise(type = paste(unique(major_cell_type), collapse = "/")) %>%
+  column_to_rownames("clone_nr")
+
+# Ensure the annotation matches the matrix rows exactly
+row_data_nonpeiblast <- row_data_nonpeiblast[rownames(heatmap_matrix_nonepiblast), , drop = FALSE]
+
+# 3. Create the Annotation object
+celltype_cols <- c(
+  "ENS" = "#984EA3"
+)
+
+ra = rowAnnotation(
+  CellType = row_data_nonpeiblast$type,
+  col = list(CellType = celltype_cols)
+)
+
+# 4. Draw the Heatmap with Annotation
+pdf(file.path(fig_dir_E3, "E3_nonepiblast_clones_3regions.pdf"), width = 3, height = 4, onefile = FALSE)
+Heatmap(heatmap_matrix_nonepiblast, 
+        name = "Presence",
+        col = c("white", "navy"),
+        right_annotation = ra,        # Adds the major_cell_type_2 bar
+        show_row_names = FALSE, 
+        cluster_columns = FALSE, 
+        row_title = "Clones",
+        column_title = "Regional Distribution & Cell Identity", # at least two regions are shared 
+        border = TRUE)
+dev.off()
+```
+
+```{r}
+E16_E3_ENS <- subset(E16_barcodes_E3, subset = epiblast_label == "non-epiblast" & major_cell_type == "ENS")
+length(unique(na.omit(E16_E3_ENS$clone_nr))) #164 clones in total
+
+upset_data_ens <- E16_E3_ENS@meta.data %>%
+  filter(!is.na(clone_nr)) %>%
+  mutate(major_cell_type_2 = as.character(major_cell_type_2)) %>%
+  distinct(clone_nr, major_cell_type_2) %>%
+  mutate(present = 1) %>%
+  pivot_wider(
+    names_from = major_cell_type_2, 
+    values_from = present, 
+    values_fill = 0
+  ) %>%
+  as.data.frame()
+
+celltype_sets <- colnames(upset_data_ens)[colnames(upset_data_ens) != "clone_nr"]
+pdf(file.path(fig_dir_E3, "E3_164ENSclones_intersectionmorethan3.pdf"), width = 8, height = 6, onefile = FALSE)
+upset(upset_data_ens, 
+      sets = celltype_sets, 
+      order.by = "freq", 
+      main.bar.color = "#6a0dad",   
+      shade.color = "#e8daef",
+      point.size = 3.5, 
+      line.size = 1,
+      text.scale = 1.5,
+      nintersects = 14) # ENS only, intersection more than 3
+dev.off()
+```
+
+```{r,fig.height = 4, fig.width = 7, fig.align = "center"}
+# Identify which samples each clone is in non-epiblast clones
+clone_sharing_logic <- E16_E3_ENS@meta.data %>%
+  filter(clones_per_cell_4 == "Multicellular") %>%        
+  distinct(clone_nr, sample) %>%
+  group_by(clone_nr) %>%
+  summarise(intersection_type = paste(sort(sample), collapse = " & "), .groups = "drop")
+
+# Create a named vector for mapping
+sharing_map <- setNames(clone_sharing_logic$intersection_type, clone_sharing_logic$clone_nr)
+cells_meta <- E16_E3_ENS@meta.data
+cell_upset_values <- sharing_map[as.character(cells_meta$clone_nr)]
+names(cell_upset_values) <- colnames(E16_E3_ENS)
+E16_E3_ENS$upset_group <- cell_upset_values
+
+E16_E3_ENS$migration_type <- case_when(
+  grepl("stomach", E16_E3_ENS$upset_group) & grepl("colon", E16_E3_ENS$upset_group) ~ "Stomach-Colon Migrant",
+  grepl("&", E16_E3_ENS$upset_group) ~ "Other Shared Clone",
+  TRUE ~ "Local Clone"
+)
+
+DimPlot(E16_E3_ENS, 
+        group.by = "migration_type", 
+        cols = c("Stomach-Colon Migrant" = "#E31A1C", 
+                 "Other Shared Clone" = "#1F78B4",    
+                 "Local Clone" = "#A6CEE3"),
+        order = T, 
+        reduction = "umap.harmony") +  ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+save_fig_E3("ENS_longdistancemigration_nonepiblast_E3.pdf",width = 7, height = 4)
+```
+
+```{r,fig.height = 5, fig.width = 5, fig.align = "center"}
+DimPlot(E16_E3_ENS, 
+        group.by = "sample", 
+        order = T, 
+        reduction = "umap.harmony") +  ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2")
+
+E3_colon_subset <- subset(E16_E3_ENS, subset = sample == "E16_colon")
+
+VlnPlot(E3_colon_subset,
+        features = c("Pou3f3"), 
+        group.by = "migration_type", 
+        pt.size = 0.5, # Shows individual cell jitter
+        cols = c("Stomach-Colon Migrant" = "#E31A1C", 
+                 "Other Shared Clone" = "#1F78B4", 
+                 "Local Clone" = "#A6CEE3"))
+save_fig_E3("ENS_Vlnplot_nonepiblast_E3_Pou3f3alone.pdf",width = 5, height = 5)
+```
+
+```{r,fig.height = 9, fig.width = 6, fig.align = "center"}
+# Prepare metadata with relabeled ENS subtypes
+ens_meta_shared <- E16_E3_ENS@meta.data %>%
+  filter(!is.na(clone_nr))
+
+ens_shared_metadata <- ens_meta_shared %>%
+  group_by(clone_nr) %>%
+  summarise(
+    samples = paste(
+      unique(sample[order(match(sample, c("E16_stomach", "E16_jej_ileum", "E16_colon")))]),
+      collapse = " / "
+    ),
+    .groups = "drop"
+  )
+
+# Build clone x subtype proportion matrix
+heatmap_matrix_ens <- ens_meta_shared %>%
+  group_by(clone_nr, major_cell_type_2) %>%
+  tally(name = "cell_count") %>%
+  group_by(clone_nr) %>%
+  mutate(prop = cell_count / sum(cell_count)) %>%
+  ungroup() %>%
+  select(clone_nr, major_cell_type_2, prop) %>%
+  pivot_wider(
+    id_cols = clone_nr,
+    names_from = major_cell_type_2,
+    values_from = prop,
+    values_fill = 0
+  ) %>%
+  column_to_rownames("clone_nr") %>%
+  as.matrix()
+
+# 4. Align row annotation
+row_data_ens <- ens_shared_metadata %>%
+  filter(clone_nr %in% rownames(heatmap_matrix_ens)) %>%
+  column_to_rownames("clone_nr")
+
+row_data_ens <- row_data_ens[rownames(heatmap_matrix_ens), , drop = FALSE]
+
+# 5. Region annotation colors
+all_unique_combos <- unique(row_data_ens$samples)
+ens_colors <- setNames(scales::hue_pal()(length(all_unique_combos)), all_unique_combos)
+
+ra_ens <- rowAnnotation(
+  region = row_data_ens$samples,
+  col = list(region = ens_colors),
+  show_annotation_name = TRUE,
+  annotation_legend_param = list(
+    region = list(
+      title = "Regions",
+      title_gp = gpar(fontsize = 10, fontface = "bold")
+    )
+  )
+)
+
+# 6. Order subtype columns
+subtype_order <- c(
+  "ENS Progenitor",
+  "ENS Neuroblast",
+  "ENS Branch A",
+  "ENS Branch B",
+  "SCP"
+)
+
+existing_cols <- intersect(subtype_order, colnames(heatmap_matrix_ens))
+heatmap_matrix_ens <- heatmap_matrix_ens[, existing_cols, drop = FALSE]
+
+# 7. Order region groups
+
+region_order <- c(
+  "E16_stomach / E16_jej_ileum / E16_colon",
+  "E16_stomach / E16_colon",
+  "E16_stomach / E16_jej_ileum",
+  "E16_jej_ileum / E16_colon",
+  "E16_stomach",
+  "E16_jej_ileum",
+  "E16_colon"
+)
+
+region_colors <- c(
+  "E16_stomach / E16_jej_ileum / E16_colon" = "#E41A1C",  
+  "E16_stomach / E16_colon" = "#FF69B4",      
+  "E16_stomach / E16_jej_ileum" = "#FF7F00",              
+  "E16_jej_ileum / E16_colon" = "#41AB5D",
+  "E16_stomach" = "#8C6D31",
+  "E16_jej_ileum" ="#FDBF6F",
+  "E16_colon" = "#CAB2D6"
+)
+
+  
+row_data_ens$samples <- factor(row_data_ens$samples, levels = region_order)
+
+# reorder rows to match split order
+ord <- order(row_data_ens$samples)
+heatmap_matrix_ens <- heatmap_matrix_ens[ord, , drop = FALSE]
+row_data_ens <- row_data_ens[ord, , drop = FALSE]
+
+# rebuild annotation AFTER ordering rows
+ra_ens <- rowAnnotation(
+  region = row_data_ens$samples,
+  col = list(region = region_colors),
+  show_annotation_name = TRUE,
+  annotation_legend_param = list(
+    region = list(
+      title = "Regions",
+      title_gp = gpar(fontsize = 10, fontface = "bold")
+    )
+  )
+)
+
+# 8. Continuous color scale
+col_fun <- colorRamp2(c(0, 0.5, 1), c("white", "#6baed6", "#08306B"))
+
+pdf(file.path(fig_dir_E3, "ENS_E3_subtype_sharing_heatmap_subtype_allclones.pdf"), width = 6, height = 9)
+
+Heatmap(
+  heatmap_matrix_ens,
+  name = "Proportion",
+  right_annotation = ra_ens,
+  cluster_columns = FALSE,
+  cluster_rows = TRUE,
+  cluster_row_slices = FALSE,
+  row_split = row_data_ens$samples,
+  row_gap = unit(1.5, "mm"),
+  show_row_names = FALSE,
+  border = TRUE,
+  column_names_side = "top",
+  column_title = "Long-Distance ENS Migrants: Regional & Subtype Composition",
+  row_title = "Shared CloneIDs"
+)
+
+dev.off()
+```
+

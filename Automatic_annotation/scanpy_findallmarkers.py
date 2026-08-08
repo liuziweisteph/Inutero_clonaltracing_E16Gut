@@ -1,10 +1,13 @@
+# Run from project root. Requires E9E10/E9E10NC.AC_neural_and_epi.h5ad
+# (download or generate via E9E10/E9E10_analysis).
+
 import re
 import scanpy as sc
 import pandas as pd
 import numpy as np
 
-INPUT_FILE = "../NC_AC_E9E10.h5ad"
-OUTPUT_FILE = "scanpy_NC_AC_E9E10.csv"
+INPUT_FILE = "E9E10/E9E10NC.AC_neural_and_epi.h5ad"
+OUTPUT_FILE = "Automatic_annotation/scanpy_E9E10NC.AC_harmony_clusters.csv"
 
 NC_AC = sc.read_h5ad(INPUT_FILE)
 sc.tl.rank_genes_groups(NC_AC, groupby="leiden_res_0.40", method="wilcoxon", use_raw=False)
@@ -82,4 +85,3 @@ def format_scsa_results(result_dict, output_file):
 if __name__ == "__main__":
     format_scsa_results(markers_res, OUTPUT_FILE)
     print("Marker analysis complete. Results saved to", OUTPUT_FILE)
-

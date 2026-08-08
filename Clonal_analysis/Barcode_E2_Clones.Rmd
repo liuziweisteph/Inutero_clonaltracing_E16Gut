@@ -733,6 +733,7 @@ write.csv(df_E2_clonal_subtype_3, "Data/E2_df_clonalanalysis_subtypes_meso.csv",
 ```{r}
 saveRDS(object = E16_E2_non_epiblast, "Data/E16_barcodes_E2_epibastremoved.rds")
 saveRDS(object = E16_barcodes_E2, "Data/E16_barcodes_E2_2.rds")
+saveRDS(object = E16_barcodes_E2, "Data/E16_barcodes_E2.rds")
 ```
 ```{r}
 # Prepare for the UpSet plot for E2 (three germ layers)

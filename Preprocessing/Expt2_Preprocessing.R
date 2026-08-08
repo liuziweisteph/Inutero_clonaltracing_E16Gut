@@ -17,7 +17,7 @@ library(scCustomize)
 py_module_available(module = "leidenalg")
 source("Helpers/SoupXDoubletfinder.R")
 
-# External data directory — edit this path to where you extracted the raw Cell Ranger outputs (from GEO GSE325733)
+# External data directory — 
 external_data_dir <- "~/scRNA_seq/Trex_ENS/Submission/Data"
 
 # SoupX -------------------------------------------------------------------

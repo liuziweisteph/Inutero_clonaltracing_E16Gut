@@ -43,8 +43,8 @@ save_fig_regions <- function(name, width = 7, height = 5, device = grDevices::pd
 
 ```{r}
 # Annotated Seurat objects (cell types + clonal metadata; see Preprocessing and Clonal notebooks)
-E16_barcodes <- readRDS("Data/E16_barcodes_E1_20260320.rds")
-E16_barcodes_E2 <- readRDS("Data/E16_E2_Seurat_updated.rds")
+E16_barcodes <- readRDS("Data/E16_barcodes_E1.rds")
+E16_barcodes_E2 <- readRDS("Data/E16_barcodes_E2.rds")
 E16_E2_ENS <- readRDS("Data/E16_barcodes_ENS_E2.rds")
 ```
 

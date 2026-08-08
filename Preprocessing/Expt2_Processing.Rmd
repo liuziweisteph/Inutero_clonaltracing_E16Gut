@@ -110,7 +110,7 @@ distinct29 <- c("#96C3D8", "#12CBC4", "#9f9ac4", "#6ac6e9", "#4392c4", "#5758BB"
 ```
 
 ```{r,fig.height = 3, fig.width = 5, fig.align = "center"}
-E16_seurat_E2 <- readRDS("Data/E16_seurat_E2.rds")
+E16_seurat_E2 <- readRDS("Data/E16_barcodes_E2.rds")
 DimPlot(E16_seurat_E2, reduction = "umap.harmony", group.by = "seurat_clusters", label = T) + ggtitle(NULL) + xlab("UMAP1") + ylab("UMAP2") # 21749 cells
 save_fig_E2("Supp/umap_8seuratclusters.pdf") # Supplementary
 ```
