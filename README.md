@@ -361,7 +361,7 @@ All `.Rmd` files include `knitr::opts_knit$set(root.dir = normalizePath(".."))` 
 | Fig. 3                             | `Barcode_E1_Clones.Rmd` → `Figures/Fig3/`                                                                                                              |
 | Fig. 4                             | `Expt2_Processing.Rmd`, `Barcode_E2_Clones.Rmd` → `Figures/Fig4/`                                                                                      |
 | Fig. 5                             | `Clonal_Regional.Rmd`, `E1E2_Comparison.Rmd`, `Transcriptome_Regional.Rmd`, `IntegratingE1E2E3.R` → `Figures/Fig5/`                                     |
-| Fig. 6                             | `Expt3_Preprocessing.R`, `Barcode_E3_Clones.Rmd` → `Figures/Fig6/`                                                                                      |
+
 | Fig. 3F–G, 4H–I (lineage coupling) | Exported `Data/E1_df_clonalanalysis_*.csv`, `E2_df_clonalanalysis_*.csv` + [Bandler-et-al_lineage](https://github.com/mayer-lab/Bandler-et-al_lineage) |
 
 
